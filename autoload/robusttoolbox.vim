@@ -9,6 +9,7 @@
 "  vim-gutentags regens tags subset on BufWrite event, faster than whole
 " Then this schema regen takes 12.39s on my system for just [DataDef..]
 "  Many readtags serial readtags queries and processed in vimscript
+"  Optimization matchlist() ~8x faster than split()
 "  Optimization would be to process data with pipes and perl/rust regex
 "  Optimization would be to re-write in lua or rust
 "  Optimization would be to write subschemas instead of whole on BufWrite
@@ -78,9 +79,9 @@ endfunction
 " Gets all qualified [DataField] members/properties in a list
 function! robusttoolbox#get_DataFields(tf)
 	let m = robusttoolbox#splitup_member(robusttoolbox#filtertags(a:tf, '(and $kind (eq? $kind "M") (#/\[DataField\(\"/ ($"at")))'))
-	let p = robusttoolbox#splitup_member(robusttoolbox#filtertags(a:tf, '(and $kind (eq? $kind "P") (#/\[DataField\(\"/ ($"at")))'))
+	let p = robusttoolbox#splitup_property(robusttoolbox#filtertags(a:tf, '(and $kind (eq? $kind "P") (#/\[DataField\(\"/ ($"at")))'))
 	" TODO: filter results of the query to only include those with qualified tags, at present none appear to be qualified. Qualification appears to be necessary for scoping of which [DataField] applieѕ to which [DataDefinіtion]
-	return m
+	return [m, p]
 endfunction
 
 " For kind:C puts into {t:tag, a:attributes, i:inherits, s:[sealed|abstract]}
@@ -88,17 +89,26 @@ function! robusttoolbox#splitup_class(list)
 	" Is Extended Posix Regex, so can't match nested parens IIRC
 	"  Appears to be no performance benefit of not capturing groups
 	return map(map(a:list, {i,j -> matchlist(j, '\(\h\w\+\)\t[^\t]\+\t[^\t]\+\tkind:C\tat:\(([^\t]*)\)\t\inherits:(\([^)]*\))\tsl:(\([^)]*\))')[1:-6]}), {i,j -> {'t': j[0], 'a': j[1], 'i': j[2], 's': j[3]}})
+	"return map(map(a:list, {i,j -> split(j, '\t', v:true)}), {i,j -> {'t': j[0], 'a': j[4], 'i': j[5], 's': j[6]}})
 endfunction
 
 " For kind:S puts into {t:tag, a:attributes, i:inherits}
 function! robusttoolbox#splitup_struct(list)
 	return map(map(a:list, {i,j -> matchlist(j, '\(\h\w\+\)\t[^\t]\+\t[^\t]\+\tkind:S\tat:\(([^\t]*)\)\t\inherits:(\([^)]*\))')[1:-7]}), {i,j -> {'t': j[0], 'a': j[1], 'i': j[2]}})
+	"return map(map(a:list, {i,j -> split(j, '\t', v:true)}), {i,j -> {'t': j[0], 'a': j[4], 'i': j[5]}})
 endfunction
 
 " For kind:M puts into {t:tag, a:attributes, y:type, d:default}
 function! robusttoolbox#splitup_member(list)
 	return map(map(a:list, {i,j -> matchlist(j, '\(\h\w\+\)\t[^\t]\+\t[^\t]\+\tkind:M\tat:\([^\t]*\)\ttype:\([^\t]\+\)\tdf:\(.*\)$')[1:-6]}), {i,j -> {'t': j[0], 'a': j[1], 'y': j[2], 'd': j[3]}})
 	"return map(map(a:list, {i,j -> matchlist(j, '\(\h\w\+\)\t[^\t]\+\t[^\t]\+\tkind:M\tat:\([^\t]\+\)\ttype:\([^\t]\+\)\tdf:\(.*\)$')[1:-6]}), {i,j -> len(j)})
+	"return map(map(a:list, {i,j -> split(j, '\t', v:true)}), {i,j -> {'t': j[0], 'a': j[4], 'y': j[5], 'd': j[6]}})
+endfunction
+
+" For kind:P puts into {t:tag, a:attributes, y:type, d:default}
+"  Almost identical to splitup_member but regex compiled not to 'kind:M'
+function! robusttoolbox#splitup_property(list)
+	return map(map(a:list, {i,j -> matchlist(j, '\(\h\w\+\)\t[^\t]\+\t[^\t]\+\tkind:P\tat:\([^\t]*\)\ttype:\([^\t]\+\)\tdf:\(.*\)$')[1:-6]}), {i,j -> {'t': j[0], 'a': j[1], 'y': j[2], 'd': j[3]}})
 endfunction
 
 function! robusttoolbox#get_Children(tf, tag)
