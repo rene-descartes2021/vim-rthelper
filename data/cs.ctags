@@ -1,0 +1,232 @@
+# Copyright (c) 2022 Rene.Descartes2021
+
+--excmd=number
+--tag-relative=yes
+--extras=+p-q
+###--extras=+pq
+--pseudo-tags=+{TAG_EXTRA_DESCRIPTION}{TAG_KIND_DESCRIPTION}{TAG_FIELD_DESCRIPTION}{TAG_PROC_CWD}
+--langdef=cs{_autoFQTag}
+--map-c#=-.cs
+--map-cs=+.cs
+###--_fielddef-cs=at,Attributes
+--_fielddef-cs=sl,sealed
+--_fielddef-cs=inherits,inherits
+--_fielddef-cs=type,type
+--_fielddef-cs=df,default
+--kinddef-cs=U,using,Usings
+--kinddef-cs=A,attribute,Attributes
+--kinddef-cs=N,namespace,Namespaces
+--kinddef-cs=C,class,Classes
+--kinddef-cs=S,struct,Structures
+--kinddef-cs=G,enumeration,Enumeration Names
+--kinddef-cs=E,enumerator,Enumerators (values inside an enumeration)
+--kinddef-cs=M,member,Members
+--kinddef-cs=P,property,Properties
+--kinds-cs=+ANCSEMP-U
+###--roles-cs.A=+{rolename}
+### scope: prefix required for readtags $scope
+--fields=+iaStsZ
+--fields-cs=+{inherits}{sl}{type}{df}
+--_tabledef-cs=main
+--_tabledef-cs=comment
+--_tabledef-cs=namespace
+--_tabledef-cs=class
+--_tabledef-cs=struct
+--_tabledef-cs=enum
+--_tabledef-cs=function
+
+# main (top level) table
+--_mtable-regex-cs=main/\/\*//p{tenter=comment}
+--_mtable-regex-cs=main/\/\/[^\n]*+//p
+--_mtable-regex-cs=main/using\h([^;]++)[;]/\1/U/p
+--_mtable-regex-cs=main/namespace\h([^\n{;\h]++)(?:\h[{]|\n[{]|;)/\1/N/p{scope=push}{tenter=namespace}
+--_mtable-regex-cs=main/[^\n]+\n|[^\n]+|\n//p
+# Shouldn't ever happen:
+#--_mtable-regex-cs=main/[}]//p{scope=clear}{tquit}
+
+# comment table
+--_mtable-regex-cs=comment/\*\///p{tleave}
+--_mtable-regex-cs=comment/.//p
+
+# namespace table
+###--_mtable-regex-cs=namespace/\h+//p
+--_mtable-regex-cs=namespace/\/\*//p{tenter=comment}
+--_mtable-regex-cs=namespace/\/\/[^\n]*+//p
+--_mtable-regex-cs=namespace/(\[[^\]\n]++\])(?:[\h\n]++)?//p{{
+	[\1 1 _matchloc]
+}}
+#  namespace.class
+--_mtable-regex-cs=namespace/(?:\b(sealed|abstract)\b\h)?(?:\bunsafe\b\h)?(?:\bpartial\b\h)?\bclass\b\h([^\n\h{]++)(?:\h?:\h([^\n{]++))?(?:\n\h*+)?[{]/\2/C/p{_field=inherits:(\3)}{_field=sl:\1}{scope=push}{tenter=class}{{
+	count -1 1 {
+		pop aload pop /attribute exch _tag _commit
+		dup \2 typeref:
+		_scoperef
+	} for
+}}
+#  namespace.struct
+--_mtable-regex-cs=namespace/\bstruct\b\h(\b\w++\b)(?:\h?:\h([^{\s]*+))\s?\h*+[{]/\1/S/p{_field=inherits:(\2)}{scope=push}{tenter=struct}{{
+	count -1 1 {
+		pop aload pop /attribute exch _tag _commit
+		dup \1 typeref:
+		_scoperef
+	} for
+}}
+#  namespace.enum
+--_mtable-regex-cs=namespace/\benum\b\h(\b\w++\b)(?:\h:\h([^{\s]*+))?\s?\h*+[{]/\1/G/p{scope=push}{tenter=enum}{{
+	count -1 1 {
+		pop aload pop /attribute exch _tag _commit
+		dup \1 typeref:
+		_scoperef
+	} for
+	. \2 typeref:
+}}
+#:scope . :scope exch scope:
+# [ \1 (string) ] typeref:
+--_mtable-regex-cs=namespace/namespace\h([^\n{;\h]++)(?:\h[{]|\n[{]|;)/\1/N/p{scope=replace}{tenter=namespace}
+--_mtable-regex-cs=namespace/[}]//p{scope=pop}{tleave}
+--_mtable-regex-cs=namespace/.//p
+
+# class table
+###--_mtable-regex-cs=class/\h+//p
+--_mtable-regex-cs=class/[}]//p{scope=pop}{tleave}
+--_mtable-regex-cs=class/\/\*//p{tenter=comment}
+--_mtable-regex-cs=class/\/\/[^\n]*+//p
+--_mtable-regex-cs=class/(\[[^\]\n]++\])(?:[\h\n]++)?//p{{
+	[\1 1 _matchloc]
+}}
+#  class.enum must be before property/member to match first
+--_mtable-regex-cs=class/(?:\b(?:public|private|protected|internal)\b\h)?\benum\b\h(\b\w++\b)(?:\h:\h([^{\s]*+))?\s?\h*+[{]/\1/G/p{scope=push}{tenter=enum}{{
+	count -1 1 {
+		pop aload pop /attribute exch _tag _commit
+		dup \1 typeref:
+		_scoperef
+	} for
+	. \2 typeref:
+}}
+#  class.member
+--_mtable-regex-cs=class/(?:\b(?:public|private|protected|internal|virtual|static|override|readonly)\b\h)*+([\w<>]++[?]?)\h(\b\w++\b)(?:\h=[>]?\s?\h*+([^;]++))?;/\2/M/p{_field=type:\1}{_field=df:\3}{scope=ref}{{
+	count -1 1 {
+		pop aload pop /attribute exch _tag _commit
+		dup \2 typeref:
+		_scoperef
+	} for
+}}
+#  class.property
+--_mtable-regex-cs=class/(?:\b(?:public|private|protected|internal|vіrtual|static|override|readonly)\b\h)*+([\w<>]++[?]?)\h(\b\w++\b)\s?\h*+(?<brak>[{](?:[^}{]*+(?&brak)?)*+[}])(?:\h=[>]?\h([^;]++);)?/\2/P/p{_field=type:\1}{_field=df:\4}{scope=ref}{{
+	count -1 1 {
+		pop aload pop /attribute exch _tag _commit
+		dup \2 typeref:
+		_scoperef
+	} for
+}}
+#  class.class
+--_mtable-regex-cs=class/(?:\b(sealed|abstract)\b\h)?(?:\bunsafe\b\h)?(?:\bpartial\b\h)?\bclass\b\h([^\n\h{]++)(?:\h?:\h([^\n{]++))?(?:\n\h*+)?[{]/\2/C/p{_field=inherits:(\3)}{_field=sl:\1}{scope=push}{tenter=class}{{
+	count -1 1 {
+		pop aload pop /attribute exch _tag _commit
+		dup \2 typeref:
+		_scoperef
+	} for
+}}
+#  class.struct
+--_mtable-regex-cs=class/\bstruct\b\h(\b\w++\b)(?:\h?:\h([^{\s]*+))\s?\h*+[{]/\1/S/p{_field=inherits:(\2)}{scope=push}{tenter=struct}{{
+	count -1 1 {
+		pop aload pop /attribute exch _tag _commit
+		dup \1 typeref:
+		_scoperef
+	} for
+}}
+#  class.function (...)[ => ...];
+--_mtable-regex-cs=class/\([^\)]*+\)\s?\h*+(?:=>[^;]++)?;//p{{
+	count -1 1 {
+		pop pop
+	} for
+}}
+#  class.function (...) { ... }
+--_mtable-regex-cs=class/\([^\)]*+\)\s?\h*+[{]//p{tenter=function}{{
+	count -1 1 {
+		pop pop
+	} for
+}}
+--_mtable-regex-cs=class/.//p
+
+# struct table
+--_mtable-regex-cs=struct/[}]//p{scope=pop}{tleave}
+--_mtable-regex-cs=struct/\/\*//p{tenter=comment}
+--_mtable-regex-cs=struct/\/\/[^\n]*+//p
+--_mtable-regex-cs=struct/(\[[^\]\n]++\])(?:[\h\n]++)?//p{{
+	[\1 1 _matchloc]
+}}
+#  struct.enum must be before property/member to match first
+--_mtable-regex-cs=struct/(?:\b(?:public|private|protected|internal)\b\h)?\benum\b\h(\b\w++\b)(?:\h:\h([^{\s]*+))?\s?\h*+[{]/\1/G/p{scope=push}{tenter=enum}{{
+	count -1 1 {
+		pop aload pop /attribute exch _tag _commit
+		dup \1 typeref:
+		_scoperef
+	} for
+	. \2 typeref:
+}}
+#  struct.member
+--_mtable-regex-cs=struct/(?:\b(?:public|private|protected|internal|virtual|static|override|readonly)\b\h)*+([\w<>]++[?]?)\h(\b\w++\b)(?:\h=[>]?\s?\h*+([^;]++))?;/\2/M/p{_field=type:\1}{_field=df:\3}{scope=ref}{{
+	count -1 1 {
+		pop aload pop /attribute exch _tag _commit
+		dup \2 typeref:
+		_scoperef
+	} for
+}}
+#  struct.property
+--_mtable-regex-cs=struct/(?:\b(?:public|private|protected|internal|vіrtual|static|override|readonly)\b\h)*+([\w<>]++[?]?)\h(\b\w++\b)\s?\h*+(?<brak>[{](?:[^}{]*+(?&brak)?)*+[}])(?:\h=[>]?\h([^;]++);)?/\2/P/p{_field=type:\1}{_field=df:\4}{scope=ref}{{
+	count -1 1 {
+		pop aload pop /attribute exch _tag _commit
+		dup \2 typeref:
+		_scoperef
+	} for
+}}
+#  struct.class
+--_mtable-regex-cs=struct/(?:\b(sealed|abstract)\b\h)?(?:\bunsafe\b\h)?(?:\bpartial\b\h)?\bclass\b\h([^\n\h{]++)(?:\h?:\h([^\n{]++))?(?:\n\h*+)?[{]/\2/C/p{_field=inherits:(\3)}{_field=sl:\1}{scope=push}{tenter=class}{{
+	count -1 1 {
+		pop aload pop /attribute exch _tag _commit
+		dup \2 typeref:
+		_scoperef
+	} for
+}}
+#  struct.struct
+--_mtable-regex-cs=struct/\bstruct\b\h(\b\w++\b)(?:\h?:\h([^{\s]*+))\s?\h*+[{]/\1/S/p{_field=inherits:(\2)}{scope=push}{tenter=struct}{{
+	count -1 1 {
+		pop aload pop /attribute exch _tag _commit
+		dup \1 typeref:
+		_scoperef
+	} for
+}}
+#  struct.function (...)[ => ...];
+--_mtable-regex-cs=struct/\([^\)]*+\)\s?\h*+(?:=>[^;]++)?;//p{{
+	count -1 1 {
+		pop pop
+	} for
+}}
+#  struct.function (...) { ... }
+--_mtable-regex-cs=struct/\([^\)]*+\)\s?\h*+[{]//p{tenter=function}{{
+	count -1 1 {
+		pop pop
+	} for
+}}
+--_mtable-regex-cs=struct/.//p
+
+# enum table
+--_mtable-regex-cs=enum/[}]//p{scope=pop}{tleave}
+--_mtable-regex-cs=enum/\/\*//p{tenter=comment}
+--_mtable-regex-cs=enum/\/\/[^\n]*+//p
+--_mtable-regex-cs=enum/(\b\w++\b)[,\s]/\1/E/p{scope=ref}
+--_mtable-regex-cs=enum/.//p
+
+# function table
+#  Debug how many functions are in file, if we misparsed:
+#	count pstack pop
+--_mtable-regex-cs=function/[}]//p{tleave}
+--_mtable-regex-cs=function/\/\*//p{tenter=comment}
+--_mtable-regex-cs=function/\/\/[^\n]*+//p
+--_mtable-regex-cs=function/[{]//p{tenter=function}{{
+	count -1 1 {
+		pop pop
+	} for
+}}
+--_mtable-regex-cs=function/.//p
