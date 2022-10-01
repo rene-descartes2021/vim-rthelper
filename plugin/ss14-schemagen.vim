@@ -1,7 +1,6 @@
 " Copyright (c) 2022 Rene.Descartes2021
 
 let tempdir = fnamemodify(tempname(), ':h')
-let ctags_exclude_file = tempdir.'/ctags_exclude'
 " Multiple server instances seem to append into one log fine:
 let g:lsp_log_file = '/tmp/vim-lsp.log'
 "let g:lsp_log_file = tempdir.'/vim-lsp.log'
@@ -23,32 +22,7 @@ autocmd BufEnter *.yml set indentexpr=
 "  symlink project tag file into tmpfs cache dir. Can make PR for #176.
 " See: https://github.com/universal-ctags/ctags/issues/759
 "			 https://github.com/ludovicchabant/vim-gutentags/issues/176
-let ctags_exclude_data = [
-	\ '*/obj/*',
-	\ '*/bin/*',
-	\ '*/bin.bak/*',
-	\ '*/BuildChecker/*',
-	\ '*/BuildFiles/*',
-	\ 'Makefile',
-	\ '*.css',
-	\ '*.ctags',
-	\ '*.bat',
-	\ '*.h',
-	\ '*.html',
-	\ '*.js',
-	\ '*.json',
-	\ '*.m',
-	\ '*.md',
-	\ '*.svg',
-	\ '*.ps1',
-	\ '*.py',
-	\ '*.xml',
-	\ ]
-
-if !filereadable(ctags_exclude_file)
-	call writefile(ctags_exclude_data, ctags_exclude_file, 'S')
-endif
-
+let ctags_exclude_file = fnamemodify(expand('<sfile>'), ':h').'/../data/exclude.ctags'
 let ctags_cs_file = fnamemodify(expand('<sfile>'), ':h').'/../data/cs.ctags'
 
 let g:gutentags_ctags_extra_args = get(g:, 'gutentags_ctags_extra_args', [])
@@ -81,13 +55,15 @@ let g:gutentags_ctags_extra_args += [
 
 "\		 'schemas': { '/home/browser/dev/space-station-14/notes/YAMLSchemas/schemas/prototypes.json': 'Resources/Prototypes/*.yml' },
 
+"TODO: Why did I have this schema below? I didn't remove from copy-paste I guess:
+" \			 'https://mattn.github.io/efm-langserver/schema.json': '/efm-langserver/config.yaml',
+
 let g:lsp_settings = get(g:, 'lsp_settings', {})
 let g:lsp_settings['yaml-language-server'] = {
 	\ 'workspace_config': {
 	\		'yaml': {
 	\		 'schemas': {
-	\			 'https://mattn.github.io/efm-langserver/schema.json': '/efm-langserver/config.yaml',
-	\			 './notes/YAMLSchemas/schemas/prototypes.json': '/Resources/Prototypes/**/*.yml',
+	\			 './notes/YAMLSchemas/schemas/gen/prototypes.json': '/Resources/Prototypes/**/*.yml',
 	\		 },
 	\		 'completion': v:true,
 	\		 'hover': v:true,

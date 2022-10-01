@@ -1,0 +1,349 @@
+{
+	"$id": "https://www.spacestation14.io/schemas/prototypes.json",
+	"$schema": "http://json-schema.org/draft-07/schema",
+	"description": "JSON Schema for RobustToolbox prototype validation.",
+	"additionalProperties": false,
+	"type": "array",
+	"items": {
+		"type": "object",
+		"oneOf": [
+		],
+		"additionalProprties": false
+	},
+	"$defs": {
+		"definitions": {
+			"SoundSpecifier": {
+				"$id": "#/$defs/definitions/SoundSpecifier",
+				"description": "[Shim]C# type: SoundSpecifier",
+				"properties": {
+					"params": {
+						"$ref": "#/$defs/definitions/AudioParams",
+						"description": "[Shim]SoundSpecifier\rC# default: AudioParams.Default"
+					}
+				},
+				"oneOf": [
+					{
+						"$ref": "#/$defs/definitions/SoundPathSpecifier"
+					},
+					{
+						"$ref": "#/$defs/definitions/SoundCollectionSpecifier"
+					}
+				]
+			},
+			"SoundPathSpecifier": {
+				"$id": "#/$defs/definitions/SoundPathSpecifier",
+				"description": "[Shim]C# type: SoundPathSpecifier",
+				"additionalProperties": false,
+				"properties": {
+					"params": {},
+					"path": {
+						"$ref": "#/definitions/ResourcePath",
+						"description": "[Shim]C# type:ResourcePath?\rC# name:Path\r[customTypeSerializer]: ResourcePathSerializer"
+					}
+				},
+				"required": [ "path" ]
+			},
+			"SoundCollectionSpecifier": {
+				"$id": "#/$defs/definitions/SoundCollectionSpecifier",
+				"description": "[Shim]C# type: SoundCollectionSpecifier",
+				"additionalProperties": false,
+				"properties": {
+					"params": {},
+					"collection": {
+						"$ref": "#/definitions/nullable-string",
+						"description": "[Shim]C# type:string?\rC# name:Collection\r[customTypeSerializer]: PrototypeIdSerializer<SoundCollectionPrototype>"
+					}
+				},
+				"required": [ "collection" ]
+			}
+		}
+	},
+	"definitions": {
+		"nonNegativeInteger": {
+			"type": "integer",
+			"minimum": 0
+		},
+		"nullable-array": {
+			"$id": "#/definitions/nullable-array",
+			"type": ["array", "null"]
+		},
+		"nullable-boolean": {
+			"$id": "#/definitions/nullable-boolean",
+			"type": ["boolean", "null"]
+		},
+		"nullable-integer": {
+			"$id": "#/definitions/nullable-integer",
+			"type": ["integer", "null"]
+		},
+		"nullable-number": {
+			"$id": "#/definitions/nullable-number",
+			"type": ["number", "null"]
+		},
+		"nullable-object": {
+			"$id": "#/definitions/nullable-object",
+			"type": ["object", "null"]
+		},
+		"nullable-string": {
+			"$id": "#/definitions/nullable-string",
+			"type": ["string", "null"]
+		},
+		"path": {
+			"type": "string",
+			"minLength": 1
+		},
+		"nullable-path": {
+			"$id": "#/definitions/nullable-path",
+			"oneOf": [
+				{
+					"$ref": "#/definitions/path"
+				},
+				{
+					"type": "null"
+				}
+			]
+		},
+		"prototype": {
+			"$id": "#/definitions/prototype",
+			"description": "This doesn't appear on hover",
+			"properties": {
+				"type": {
+					"type": "string",
+					"description": "C# type: class\rNotes: Class with [Prototype('name')] attribute, inheriting from IPrototype, and possibly IInheritingPrototype",
+					"enum": []
+				},
+				"id": {
+					"type": "string",
+					"description": "C# type: string\rNotes: The 'in code name' of the object. Must be unique."
+				}
+			},
+			"required": [ "type", "id" ]
+		},
+		"ComponentRegistry": {
+			"$id": "#/definitions/ComponentRegistry",
+			"additionalProperties": false,
+			"type": "array",
+			"items": {
+				"type": "object",
+				"oneOf": [],
+				"additionalProprties": false
+			}
+		},
+		"Component": {
+			"$id": "#/definitions/Component",
+			"description": "This doesn't appear on hover",
+			"properties": {
+				"type": {
+					"type": "string",
+					"description": "Type of component, either remove 'Component' suffix or use [ComponentProtoName('name')]",
+					"enum": []
+				}
+			},
+			"required": [ "type" ]
+		},
+		"char": {
+			"$id": "#/definitions/char",
+			"description": "[Shim]C# type: char",
+			"type": "string",
+			"pattern": "^.{1}$"
+		},
+		"ResourcePath": {
+			"$id": "#/definitions/ResourcePath",
+			"description": "[Shim]C# type: ResourcePath",
+			"$ref": "#/definitions/path"
+		},
+		"TimeSpan": {
+			"$id": "#/definitions/TimeSpan",
+			"description": "[Shim]C# type: TimeSpan",
+			"oneOf": [
+				{ "type": "number" },
+				{
+					"type": "array",
+					"items": { "type": "integer" },
+					"minItems": 3,
+					"maxItems": 5
+				}
+			]
+		},
+		"SpriteSpecifier": {
+			"$id": "#/definitions/SpriteSpecifier",
+			"description": "[Shim]C# type: SpriteSpecifier",
+			"oneOf": [
+				{
+					"$ref": "#/definitions/ResourcePath",
+					"description": "[Shim]TexturePath"
+				},
+				{
+					"type": "string",
+					"description": "[Shim]EntityPrototypeId"
+				},
+				{
+					"type": "object",
+					"additionalProperties": false,
+					"properties": {
+						"sprite": {
+							"$ref": "#/definitions/ResourcePath",
+							"description": "[Shim]RsiPath"
+						},
+						"state": {
+							"type": "string",
+							"description": "[Shim]RsiState"
+						}
+					}
+				}
+			]
+		},
+		"Color": {
+			"$id": "#/definitions/Color",
+			"description": "[Shim]C# type: Color",
+			"oneOf": [
+				{
+					"type": "string",
+					"description": "C# type: Color\rC# scope: Robust.Shared.Maths\rNotes:An enum or hex, e.g. ''#FF00FF''",
+					"enum": []
+				},
+				{
+					"type": "string",
+					"description": "C# type: Color\rC# scope: Robust.Shared.Maths\rNotes:An enum or hex",
+					"pattern": "^#[A-Fa-f0-9]{6}$"
+				}
+			]
+		},
+		"EntityUid": {
+			"$id": "#/definitions/EntityUid",
+			"description": "[Shim]C# type: EntityUid\rC# scope: Robust.Shared.GameObjects\rNotes:String with pattern c?[0-9]+",
+			"type": "string",
+			"pattern": "^c?[0-9]+$"
+		},
+		"Regex": {
+			"$id": "#/definitions/Regex",
+			"description": "[Shim]C# type: Regex\rC# scope: System\rNotes:String with regex",
+			"type": "string"
+		},
+		"Angle": {
+			"$id": "#/definitions/Angle",
+			"description": "[Shim]C# type: Angle\rC# scope: Robust.Shared.Maths\rNotes: Either a double or a Vector2",
+			"oneOf": [
+				{ "type": "number" },
+				{ "$ref": "#/definitions/Vector2" }
+			]
+		},
+		"FixedPoint2": {
+			"$id": "#/definitions/FixedPoint2",
+			"description": "[Shim]C# type: FixedPoint2\rC# scope: Content.Shared.FixedPoint\rNotes:oneOf integer, double, or string",
+			"oneOf": [
+				{ "type": "number" },
+				{ "type": "string" }
+			]
+		},
+		"FormattedMessage": {
+			"$id": "#/definitions/FormattedMessage",
+			"description": "[Shim]C# type: FormattedMessage",
+			"type": "string"
+		},
+		"Box2": {
+			"$id": "#/definitions/Vector2",
+			"description": "[Shim]C# type: Box2 C# scope: Robust.Shared.Maths",
+			"type": "object",
+			"additionalProperties": false,
+			"oneOf": [
+				{
+					"properties": {
+						"BottomLeft": { "$ref": "#/definitions/Vector2" },
+						"TopRight": { "$ref": "#/definitions/Vector2" }
+					}
+				},
+				{
+					"properties": {
+						"Left": { "type": "number" },
+						"Bottom": { "type": "number" },
+						"Right": { "type": "number" },
+						"Top": { "type": "number" }
+					}
+				}
+			]
+		},
+		"Vector2": {
+			"$id": "#/definitions/Vector2",
+			"description": "[Shim]C# type: Vector2",
+			"type": "string",
+			"pattern": "^[0-9]+(\\.[0-9]+)?, ?[0-9]+(\\.[0-9]+)?$"
+		},
+		"Vector2i": {
+			"$id": "#/definitions/Vector2i",
+			"description": "[Shim]C# type: Vector2i",
+			"type": "string",
+			"pattern": "^[0-9]+, ?[0-9]+$"
+		},
+		"Vector4": {
+			"$id": "#/definitions/Vector4",
+			"description": "[Shim]C# type: Vector4",
+			"type": "string",
+			"pattern": "^[0-9]+(\\.[0-9]+)?, ?[0-9]+(\\.[0-9]+)?, ?[0-9]+(\\.[0-9]+)?, ?[0-9]+(\\.[0-9]+)?$"
+		},
+		"IAlertClick": {
+			"$id": "#/definitions/IAlertClick",
+			"description": "[Shim]C# type: IAlertClick",
+			"type": "object"
+		},
+		"IConstructionCondition": {
+			"$id": "#/definitions/IConstructionCondition",
+			"description": "[Shim]C# type: IConstructionCondition",
+			"type": "object"
+		},
+		"IObjectiveCondition": {
+			"$id": "#/definitions/IObjectiveCondition",
+			"description": "[Shim]C# type: IObjectiveCondition",
+			"type": "object"
+		},
+		"IObjectiveRequirement": {
+			"$id": "#/definitions/IObjectiveRequirement",
+			"description": "[Shim]C# type: IObjectiveRequirement",
+			"type": "object"
+		},
+		"IGasReactionEffect": {
+			"$id": "#/definitions/IGasReactionEffect",
+			"description": "[Shim]C# type: IGasReactionEffect",
+			"type": "object"
+		},
+		"IHolidayCelebrate": {
+			"$id": "#/definitions/IHolidayCelebrate",
+			"description": "[Shim]C# type: IHolidayCelebrate",
+			"type": "object"
+		},
+		"IHolidayGreet": {
+			"$id": "#/definitions/IHolidayGreet",
+			"description": "[Shim]C# type: IHolidayGreet",
+			"type": "object"
+		},
+		"IHolidayShouldCelebrate": {
+			"$id": "#/definitions/IHolidayShouldCelebrate",
+			"description": "[Shim]C# type: IHolidayShouldCelebrate",
+			"type": "object"
+		},
+		"IParallaxTextureSource": {
+			"$id": "#/definitions/IParallaxTextureSource",
+			"description": "[Shim]C# type: IParallaxTextureSource",
+			"type": "object"
+		},
+		"ITileReaction": {
+			"$id": "#/definitions/ITileReaction",
+			"description": "[Shim]C# type: ITileReaction",
+			"type": "object"
+		},
+		"IGraphAction": {
+			"$id": "#/definitions/IGraphAction",
+			"description": "[Shim]C# type: IGraphAction",
+			"type": "object"
+		},
+		"IGraphCondition": {
+			"$id": "#/definitions/IGraphCondition",
+			"description": "[Shim]C# type: IGraphCondition",
+			"type": "object"
+		},
+		"IWireAction": {
+			"$id": "#/definitions/IWireAction",
+			"description": "[Shim]C# type: IWireAction",
+			"type": "object"
+		}
+	}
+}
