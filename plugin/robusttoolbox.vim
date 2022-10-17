@@ -11,6 +11,13 @@ let g:asyncomplete_auto_popup = 1
 "let g:polyglot_disabled = ['autoindent']
 autocmd BufEnter *.yml set indentexpr=
 
+" Ensure vim-gutentags loaded on relevant filetypes
+"  vim-plug isn't extensible like this, up to plugin-consumer to
+"  configure before plug#end()
+if exists('*dein#get')
+	call uniq(sort(extend(dein#get('vim-gutentags').on_ft, ['cs', 'yaml'])))
+endif
+
 " Can't write to that file from plugin/*.vim:
 "get(g:, 'gutentags_cache_dir', expand('~/.config/tags')).'/excludes'
 
@@ -65,15 +72,15 @@ let g:lsp_settings['yaml-language-server'] = {
 	\ 'workspace_config': {
 	\		'yaml': {
 	\		 'schemas': {
-	\			 './notes/YAMLSchemas/schemas/gen/prototypes.json': '/Resources/Prototypes/**/*.yml',
+	\			 './Resources/Schemas/prototypes.json': '/Resources/Prototypes/**/*.yml',
 	\		 },
 	\		 'completion': v:true,
 	\		 'hover': v:true,
 	\		 'validate': v:true,
-	\		 'trace': { 'server': 'debug' }
 	\  }
 	\ }
 	\}
+	"\		 'trace': { 'server': 'debug' }
 	"\		'customTags': [],
 	"\			'file:///home/browser/dev/space-station-14/notes/YAMLSchemas/schemas/prototypes.json': '/Resources/Prototypes/**/*.yml'
 	"\			'./notes/YAMLSchemas/schemas/prototypes.json': '/Resources/Prototypes/**/*.yml',
@@ -96,10 +103,10 @@ endfunction
 
 "call s:update_yaml_language_server()
 
-function! Schemagen()
+"function! Schemagen()
 	" Query tagsfile g:gutentags_cache_dir/g:gutentags_ctags_tagfile
 	" e.g. ~/.config/tags/.tags
-	let tagsfile = get(g:, 'gutentags_cache_dir', expand('~/.config/tags')).'/'.get(g:, 'gutentags_ctags_tagfile', '.tags')
-	call execute('readtags', query)
-	call s:update_yaml_language_server()
-endfunction
+"	let tagsfile = get(g:, 'gutentags_cache_dir', expand('~/.config/tags')).'/'.get(g:, 'gutentags_ctags_tagfile', '.tags')
+"	call execute('readtags', query)
+"	call s:update_yaml_language_server()
+"endfunction

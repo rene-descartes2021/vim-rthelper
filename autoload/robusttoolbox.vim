@@ -1,11 +1,15 @@
 " Copyright (c) 2022 Rene.Descartes2021
 
-" Builds JSON schema for SS14 YAML prototypes
+" Builds JSON schema for RobustToolbox Content YAML prototypes
+
 " Parses ctags file `b:gutentags_files.ctags` using readtags
 " Uses vimscript. Output is list of dictionaries representing each
 "  [DataDefinition] class/structure.
-" ctags generation takes ~2s for whole SS14 project
+" ctags generation takes ~25s for whole SS14 project first time
+"  ~9s subsequent times, and milliseconds on invidual file changes
+"  Slowed down by omnisharp-roslyn concurrently parsing same files
 "  Optimization would be to use regex tables, could be ~0.2s for whole
+"  Now regex tables are used instead of mline regex, could be better
 "  vim-gutentags regens tags subset on BufWrite event, faster than whole
 " Then this schema regen takes 12.39s on my system for just [DataDef..]
 "  Many readtags serial readtags queries and processed in vimscript
@@ -39,25 +43,14 @@ endfunction
 
 function! robusttoolbox#schema(d) abort
 	if exists('*dein#get')
-		let template_file = dein#get('robusttoolbox').path.'/data/template.json'
+		let template_file = dein#get('robusttoolbox-vim').path.'/data/template.json'
 	else
 		let s_dir = fnamemodify(expand('<sfile>'), ':p:h')
 		let template_file = s_dir.'/../data/template.json'
 	endif
 
 	let t1 = reltime()
-	" I think cat might be faster for large files & template is small file
-	"if executable('cat') == 1
-		" 0.007725s
-		" 0.0182s
-		" 0.013
-		" 0.0128
-	"	let in = system('cat '.template_file)
-	"else
-		let in = join(readfile(template_file, 'b'))
-		" 0.00022s
-		" 0.00018s
-	"endif
+	let in = join(readfile(template_file, 'b'))
 	let ts1 = reltimestr(reltime(t1))
 	echom '[robusttoolbox] Read template in '.ts1.' seconds'
 	let template = json_decode(in)
@@ -116,7 +109,11 @@ function! robusttoolbox#schema(d) abort
 	endfor
 
 	let out = json_encode(template)
-	let out_file = gutentags#get_project_root(getcwd()).'/notes/YAMLSchemas/schemas/gen/prototypes.json'
+	let out_dir = gutentags#get_project_root(getcwd()).'/Resources/Schemas'
+	if !isdirectory(out_dir)
+		call mkdir(out_dir, 'p')
+	endif
+	let out_file = out_dir.'/prototypes.json'
 	call writefile([out], out_file, 'S')
 endfunction
 
