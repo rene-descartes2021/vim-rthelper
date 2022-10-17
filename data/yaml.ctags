@@ -1,0 +1,131 @@
+#--excmd=number
+#--tag-relative=yes
+#--extras=+p-q
+#--pseudo-tags=+{TAG_EXTRA_DESCRIPTION}{TAG_KIND_DESCRIPTION}{TAG_FIELD_DESCRIPTION}{TAG_PROC_CWD}
+--langdef=yml{_autoFQTag}
+#Gives error in ctags without yaml feature
+--map-yaml=-.yml
+--map-yaml=-.yaml
+--map-yml=+.yml
+--map-yml=+.yaml
+###--_fielddef-cs=at,Attributes
+#--_fielddef-yml=p,parent
+--kinddef-yml=D,id,Ids
+--kinds-yml=+D
+###--roles-cs.A=+{rolename}
+### scope: prefix required for readtags $scope
+#--fields=-nz
+#--fields=+iaStsZK
+#--fields-yml=+{p}
+--_tabledef-yml=main
+--_tabledef-yml=object
+
+### main (top level) table
+# main.comment
+--_mtable-regex-yml=main/#[^\n]*+\n//p
+# main.object
+#  indent is kept on stack, with marker to denote '- ' consumed
+--_mtable-regex-yml=main/- //p{tenter=object}{{
+	[(ind) 2]
+}}
+--_mtable-regex-yml=main/[^\n]+\n|[^\n]+|\n//p
+
+### object table
+# object.comment
+#  pop any prior indent []
+--_mtable-regex-yml=object/#[^\n]*+\n//p{{
+	count 0 gt {
+		dup type [] type eq {
+			pop
+		} if
+	} if
+}}
+#--_mtable-regex-yml=namespace/(\[[^\]]++\])//p{{
+#	[\1 1 _matchloc]
+#}}
+# object.indent
+--_mtable-regex-yml=object/([ ]++)//p{{
+	count 0 gt {
+		dup type [] type eq {
+			pop
+		} if
+	} if
+	[(ind) \1 length]
+}}
+	#dup 'c' eq { pop } if
+	#dup 2 mul
+# object.type
+#  Set scopekind here???
+--_mtable-regex-yml=object/\btype\b: ++([^\n# ]++) *+\n?+//p{{
+	dup type [] type eq {
+		aload pop
+		dup 2 eq {
+			pop pop
+			\1
+		} {
+			pop pop
+		} ifelse
+	} {
+		(error)
+	} ifelse
+}}
+# object.id
+#  Set scopename here???
+--_mtable-regex-yml=object/\bid\b: ++([^\n# ]++) *+\n?+//p{{
+	count 2 eq {
+		aload pop
+		dup 2 eq {
+			pop pop
+			\1 /id 1 _matchloc _tag _commit
+			exch
+			typeref:
+		} {
+			pop pop
+		} ifelse
+	} {
+		count -1 1 {
+			pop
+		} for
+	} ifelse
+}}
+# object.object
+--_mtable-regex-yml=object/- //p{tenter=object}{{
+	count 0 gt {
+		dup type [] type eq {
+			dup dup 1 get
+			2 add
+			1 exch put
+		} {
+			pop
+		} ifelse
+	} {
+		[(ind) 2]
+	} ifelse
+}}
+	#(newobj) count pstack pop pop
+		#dup _scoperef
+#}}
+# object.property array
+#--_mtable-regex-yml=object/\b\[^:]++\b: \[[^\]]*+\]\n//p
+#  object.property object
+#--_mtable-regex-yml=object/\b\[^:]++\b:\n//p
+#  object.property type object
+#--_mtable-regex-yml=object/\b\[^:]++\b: !type:[^\n]++\n//p
+#  object.property scalar
+#--_mtable-regex-yml=object/\b\[^:]++\b: [^\n]++\n//p
+--_mtable-regex-yml=object/[^\n]++\n//p{{
+	count 0 gt {
+		dup type [] type eq {
+			pop
+		} if
+	} if
+}}
+# or might be faster? But no end of object detection
+#--_mtable-regex-yml=object/.//p
+--_mtable-regex-yml=object/\n//p{treset=main}{{
+	count 0 gt {
+		dup type [] type eq {
+			pop
+		} if
+	} if
+}}

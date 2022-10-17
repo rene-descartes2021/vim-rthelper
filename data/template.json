@@ -17,7 +17,7 @@
 				"description": "[Shim]C# type: SoundSpecifier",
 				"properties": {
 					"params": {
-						"$ref": "#/$defs/definitions/AudioParams",
+						"$ref": "#/$defs/definitions/EAudioParams",
 						"description": "[Shim]SoundSpecifier\rC# default: AudioParams.Default"
 					}
 				},
@@ -55,6 +55,30 @@
 					}
 				},
 				"required": [ "collection" ]
+			},
+			"NPCBlackboardSerializer": {
+				"$id": "#/$defs/definitions/NPCBlackboardSerializer",
+				"description": "[Shim]NPCBlackboardSerializer",
+				"type": "object"
+			},
+			"HTNTaskListSerializer": {
+				"$id": "#/$defs/definitions/HTNTaskListSerializer",
+				"description": "HTNTaskListSerializer",
+				"oneOf": [
+					{ "type": "string" },
+					{
+						"type": "object",
+						"additionalProperties": {
+							"$ref": "#/$defs/definitions/HTNTaskListSerializer"
+						}
+					},
+					{
+						"type": "array",
+						"items": {
+							"type": "object"
+						}
+					}
+				]
 			}
 		}
 	},
@@ -194,17 +218,16 @@
 		},
 		"Color": {
 			"$id": "#/definitions/Color",
-			"description": "[Shim]C# type: Color",
 			"oneOf": [
 				{
 					"type": "string",
-					"description": "C# type: Color\rC# scope: Robust.Shared.Maths\rNotes:An enum or hex, e.g. ''#FF00FF''",
+					"description": "[Shim]C# type: Color\rC# scope: Robust.Shared.Maths\rNotes:An enum or hex, e.g. \"#FF00FF\"",
 					"enum": []
 				},
 				{
 					"type": "string",
-					"description": "C# type: Color\rC# scope: Robust.Shared.Maths\rNotes:An enum or hex",
-					"pattern": "^#[A-Fa-f0-9]{6}$"
+					"description": "[Shim]C# type: Color\rC# scope: Robust.Shared.Maths\rNotes:An enum or hex, e.g. \"#FF00FF\" or \"#FF00FF00\"",
+					"pattern": "^#[A-Fa-f0-9]{6,8}$"
 				}
 			]
 		},
@@ -213,6 +236,16 @@
 			"description": "[Shim]C# type: EntityUid\rC# scope: Robust.Shared.GameObjects\rNotes:String with pattern c?[0-9]+",
 			"type": "string",
 			"pattern": "^c?[0-9]+$"
+		},
+		"GridId": {
+			"$id": "#/definitions/GridId",
+			"description": "[Shim]C# type: GridId\rC# scope: Robust.Shared.Map\rNotes:An obsolete struct encapsulating an integer",
+			"type": "integer"
+		},
+		"Enum": {
+			"$id": "#/definitions/Enum",
+			"description": "[Shim]C# type: Enum\rC# scope: System.Enum\rNotes:Any serializable enum, enumerate them all for autocompletion???",
+			"type": "string"
 		},
 		"Regex": {
 			"$id": "#/definitions/Regex",
@@ -231,8 +264,7 @@
 			"$id": "#/definitions/FixedPoint2",
 			"description": "[Shim]C# type: FixedPoint2\rC# scope: Content.Shared.FixedPoint\rNotes:oneOf integer, double, or string",
 			"oneOf": [
-				{ "type": "number" },
-				{ "type": "string" }
+				{ "type": "number" }
 			]
 		},
 		"FormattedMessage": {
@@ -241,7 +273,7 @@
 			"type": "string"
 		},
 		"Box2": {
-			"$id": "#/definitions/Vector2",
+			"$id": "#/definitions/Box2",
 			"description": "[Shim]C# type: Box2 C# scope: Robust.Shared.Maths",
 			"type": "object",
 			"additionalProperties": false,
@@ -266,19 +298,19 @@
 			"$id": "#/definitions/Vector2",
 			"description": "[Shim]C# type: Vector2",
 			"type": "string",
-			"pattern": "^[0-9]+(\\.[0-9]+)?, ?[0-9]+(\\.[0-9]+)?$"
+			"pattern": "^-?[0-9]+(\\.[0-9]+)?, ?-?[0-9]+(\\.[0-9]+)?$"
 		},
 		"Vector2i": {
 			"$id": "#/definitions/Vector2i",
 			"description": "[Shim]C# type: Vector2i",
 			"type": "string",
-			"pattern": "^[0-9]+, ?[0-9]+$"
+			"pattern": "^-?[0-9]+, ?-?[0-9]+$"
 		},
 		"Vector4": {
 			"$id": "#/definitions/Vector4",
 			"description": "[Shim]C# type: Vector4",
 			"type": "string",
-			"pattern": "^[0-9]+(\\.[0-9]+)?, ?[0-9]+(\\.[0-9]+)?, ?[0-9]+(\\.[0-9]+)?, ?[0-9]+(\\.[0-9]+)?$"
+			"pattern": "^-?[0-9]+(\\.[0-9]+)?, ?-?[0-9]+(\\.[0-9]+)?, ?-?[0-9]+(\\.[0-9]+)?, ?-?[0-9]+(\\.[0-9]+)?$"
 		},
 		"IAlertClick": {
 			"$id": "#/definitions/IAlertClick",
@@ -323,6 +355,21 @@
 		"IParallaxTextureSource": {
 			"$id": "#/definitions/IParallaxTextureSource",
 			"description": "[Shim]C# type: IParallaxTextureSource",
+			"type": "object"
+		},
+		"IPhysShape": {
+			"$id": "#/definitions/IPhysShape",
+			"description": "[Shim]C# type: IPhysShape",
+			"type": "object"
+		},
+		"IThresholdBehavior": {
+			"$id": "#/definitions/IThresholdBehavior",
+			"description": "[Shim]C# type: IThresholdBehavior",
+			"type": "object"
+		},
+		"IThresholdTrigger": {
+			"$id": "#/definitions/IThresholdTrigger",
+			"description": "[Shim]C# type: IThresholdTrigger",
 			"type": "object"
 		},
 		"ITileReaction": {

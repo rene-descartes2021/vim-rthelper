@@ -24,12 +24,14 @@ autocmd BufEnter *.yml set indentexpr=
 "			 https://github.com/ludovicchabant/vim-gutentags/issues/176
 let ctags_exclude_file = fnamemodify(expand('<sfile>'), ':h').'/../data/exclude.ctags'
 let ctags_cs_file = fnamemodify(expand('<sfile>'), ':h').'/../data/cs.ctags'
+let ctags_yaml_file = fnamemodify(expand('<sfile>'), ':h').'/../data/yaml.ctags'
 
 let g:gutentags_ctags_extra_args = get(g:, 'gutentags_ctags_extra_args', [])
 
 let g:gutentags_ctags_extra_args += [
 	\ '--exclude=@'.ctags_exclude_file,
 	\ '--options='.ctags_cs_file,
+	\ '--options='.ctags_yaml_file,
 	\ ]
 
 "P doesn't capture Component.NetSyncEnabled default
