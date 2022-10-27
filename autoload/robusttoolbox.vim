@@ -32,16 +32,18 @@ let s:self = expand('<sfile>')
 command! -nargs=0 RobustResource call execute('source '.s:self)
 command! -nargs=0 RobustSetup call execute('let g:tf = b:gutentags_files.ctags')
 
-function! robusttoolbox#regen() abort
-	let g:d = robusttoolbox#parseCS()
+" Parses data necessary for schema generation
+function! robusttoolbox#ParseData() abort
+	let s:d = robusttoolbox#parseCS()
 	let y = robusttoolbox#parseYAML()
-	call extend(g:d, y)
-
-	" Now we build monolithic schema!!!
-	call robusttoolbox#schema(g:d)
+	call extend(s:d, y)
 endfunction
 
-function! robusttoolbox#schema(d) abort
+" Generate monolithic schema
+function! robusttoolbox#GenSchema() abort
+	if !exists('s:d')
+		call robusttoolbox#ParseData()
+	endif
 	if exists('*dein#get')
 		let template_file = dein#get('robusttoolbox-vim').path.'/data/template.json'
 	else
@@ -67,16 +69,16 @@ function! robusttoolbox#schema(d) abort
 	let template.items.oneOf = []
 
 	echom '[ExplicitDataDefinition]s...'
-	for el in a:d.e
-		call s:BuildExplicitDataDefinition(a:d, ddmap, template, el)
+	for el in s:d.e
+		call s:BuildExplicitDataDefinition(s:d, ddmap, template, el)
 	endfor
 
 	echom '[ImplicitDataDefinition]s... (including Components)'
 	" Handle components, e.g. ['Paper', 'PlantHolder', ...]
 	let unRegistered = {}
-	let ScanComponentChildren = {j -> empty(has_key(j[0], 'c') ? map(copy(j[0].c), {_,l -> ScanComponentChildren(l)}): 0) ? s:BuildComponentDefinition(a:d, unRegistered, ddmap, template, j) : s:BuildComponentDefinition(a:d, unRegistered, ddmap, template, j)}
-	let ScanImplicitDDChildren = {j -> empty(has_key(j[0], 'c') ? map(copy(j[0].c), {_,l -> ScanImplicitDDChildren(l)}): 0) ? s:BuildImplicitDataDefinition(a:d, ddmap, template, j) : s:BuildImplicitDataDefinition(a:d, ddmap, template, j)}
-	for il in a:d.i
+	let ScanComponentChildren = {j -> empty(has_key(j[0], 'c') ? map(copy(j[0].c), {_,l -> ScanComponentChildren(l)}): 0) ? s:BuildComponentDefinition(s:d, unRegistered, ddmap, template, j) : s:BuildComponentDefinition(s:d, unRegistered, ddmap, template, j)}
+	let ScanImplicitDDChildren = {j -> empty(has_key(j[0], 'c') ? map(copy(j[0].c), {_,l -> ScanImplicitDDChildren(l)}): 0) ? s:BuildImplicitDataDefinition(s:d, ddmap, template, j) : s:BuildImplicitDataDefinition(s:d, ddmap, template, j)}
+	for il in s:d.i
 		if il[0].n ==# 'Component'
 			call ScanComponentChildren(il)
 		else
@@ -92,20 +94,20 @@ function! robusttoolbox#schema(d) abort
 		if index(values(ddmap), name) == -1
 			" We have a component [DataDefinition] we can add without conflict
 			let ddmap[dd[0].s.'.'.dd[0].n] = name
-			call s:BuildComponentDefinitionInner(a:d, ddmap, template, dd, name)
+			call s:BuildComponentDefinitionInner(s:d, ddmap, template, dd, name)
 		else
 			echom 'skipped registered component to avoid duplicate: '.name
 		endif
 	endfor
 
 	" Populate Color enumeration... is in OpenTK and not an enum sadly
-	call s:BuildColorDefinition(a:d, template)
+	call s:BuildColorDefinition(s:d, template)
 
 	echom '[Prototype]s...'
 	" Handle prototypes, e.g. ['entity', 'shader', ...]
 	let s:nonDD = {}
-	for pl in a:d.p
-		call s:BuildPrototypeDefinition(a:d, ddmap, template, pl)
+	for pl in s:d.p
+		call s:BuildPrototypeDefinition(s:d, ddmap, template, pl)
 	endfor
 
 	let out = json_encode(template)
@@ -615,12 +617,25 @@ function! s:map_type(dsh, df)
 					\ 'additionalProperties': range
 					\ }
 				if has_key(domain, 'enum') || m[1] !~# '^string$'
+					" TODO: While this maps enumRefs for domain, what about range?
+					" Better to put logic in s:map_type()?
+					let enumName = 'ENUM_'.m[1]
+					if !has_key(a:dsh.sDefs, enumName)
+						let a:dsh.sDefs[enumName] = domain
+					endif
+					let enumRef = {
+						\ '$ref': '#/$defs/definitions/'.enumName,
+						\ }
+					let domain = {
+						\ 'allOf': [ enumRef ],
+						\ }
 					let stype['propertyNames'] = domain
 				endif
 				return stype
 			elseif v ==# 'tuple'
 				" I've not seen more than two element types, note names optional
 				if empty(m[3])
+					"echom 'for m[0]: '.m[0].' see m[1]: '.m[1].' m[2]: '.m[2]
 					let t1 = split(m[1])
 					let t2 = split(m[2])
 					let t1t = {'t':t1[0]}
@@ -631,12 +646,16 @@ function! s:map_type(dsh, df)
 					if len(t2) > 1
 						let t2t.n = t2[1]
 					endif
+					"echom 'see t1t: '.string(t1t).' t2t: '.string(t2t)
 					let domain = s:map_type(a:dsh, t1t)
 					let range = s:map_type(a:dsh, t2t)
 					let range.description = description
+					" description necessary below in the case of
+					"  List<string, tuple>. Note List<string, tuple> results in a
+					" nested additionalProperties, in-place type
 					return {
 						\ 'type': 'object',
-						"\ 'description': description,
+						\ 'description': description,
 						\ 'propertyNames': domain,
 						\ 'additionalProperties': range,
 						\ }
