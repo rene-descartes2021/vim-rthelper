@@ -27,13 +27,33 @@
 "		querying [DataField]s, or process hierarchy after than via inherits?
 "  Note parallel shell technique may not readily translate to MS Windows
 "readtags -t home-browser-dev-space-station-14-.tags -eE -Q '(and $kind (eq? $kind "C") (eq? ($"sl") "()") (#/(^\(|,) ?Component(,|\n|\)$)/ $inherits))' -l | cut -f 1 | xargs -P0 -I {hi} readtags -t home-browser-dev-space-station-14-.tags -eE -Q '(and $kind (eq? $kind "C") (eq? ($"sl") "(sealed)") (#/(^\(|,) ?{hi}(,|\n|\)$)/ $inherits))' -l
+"
+" Surprisingly this appears to work with yaml-language-server, when also the
+" customTag is set up in settings.... will be a long list
+	"IHTNOperator":{
+		"additionalProperties":true,
+		"description":"[BuildDef]C# type: HTNOperator\rC# scope: namespace.Content.Server.NPC.HTN.PrimitiveTasks",
+		"allOf":[
+			"{"$ref":"#/$defs/definitions/!type:SetFloatOperator"}
+		"]
+	"},
+	"!type:SetFloatOperator": {
+		"type": "object",
+			"description": "testing",
+			"properties": {
+				"targetKey": {"type":"string", "description": "hi"},
+				"amount": {"type":"number","description": "hithere"}
+			"}
+		"},
+	"}
 
 let s:self = expand('<sfile>')
 command! -nargs=0 RobustResource call execute('source '.s:self)
-command! -nargs=0 RobustSetup call execute('let g:tf = b:gutentags_files.ctags')
 
 " Parses data necessary for schema generation
 function! robusttoolbox#ParseData() abort
+	" d: The {p, i, e, G, ..., yids} definitions built by
+	"  parseCS+parseYAML from the ctags file(s)
 	let s:d = robusttoolbox#parseCS()
 	let y = robusttoolbox#parseYAML()
 	call extend(s:d, y)
@@ -44,6 +64,7 @@ function! robusttoolbox#GenSchema() abort
 	if !exists('s:d')
 		call robusttoolbox#ParseData()
 	endif
+	let g:d = s:d
 	if exists('*dein#get')
 		let template_file = dein#get('robusttoolbox-vim').path.'/data/template.json'
 	else
@@ -51,33 +72,55 @@ function! robusttoolbox#GenSchema() abort
 		let template_file = s_dir.'/../data/template.json'
 	endif
 
-	let t1 = reltime()
+	let tI = reltime()
 	let in = join(readfile(template_file, 'b'))
-	let ts1 = reltimestr(reltime(t1))
-	echom '[robusttoolbox] Read template in '.ts1.' seconds'
+	echom '[robusttoolbox] '.reltimestr(reltime(tI)).'s Read template'
 	let template = json_decode(in)
 	let g:template = template
 
-	" [DataDefinitions] scope -> name to avoid name conflicts
-	let ddmap = {
-		\ 'Robust.Shared.Audio.SoundSpecifier': 'SoundSpecifier',
-		\ 'Robust.Shared.Audio.SoundPathSpecifier': 'SoundPathSpecifier',
-		\ 'Robust.Shared.Audio.SoundCollectionSpecifier': 'SoundPathCollectionSpecifier',
-		\ }
+	" Qualified name (scope.name) to definition ($defs) name mapping, to avoid
+	" name conflicts, lookup types already made, and not have long names in $defs
+	let s:ddmap = {}
+	let g:ddmap = s:ddmap
+	let s:unresolved_on_first_pass = []
 
 	" List of dicts, e.g. [{'$ref': '#/definitions/entity'},{...}]
 	let template.items.oneOf = []
+	let template['$defs'] = {}
+	let template['$defs']['definitions'] = {}
+
+	let dsh = {
+		\ 'sDefinitions': template.definitions,
+		\ 'sDefs': template['$defs'].definitions,
+		\ }
+	" TODO: Rather than have s:builddef do on-the-fly types as encountered, do
+	" all serializable types here???
+	" But, on-the-fly may still be necessary, e.g. to link IWireAction to
+	" BaseWireAction as [ImplicitDataDefinition] is on BaseWireAction not the
+	" interface
+	echom '[Serializable]s... as !type:customTags'
+	call s:BuildSerializables(dsh, template)
+	" 'customTags': [ '!type:SetFloatOperator mapping' ],
+	let g:lsp_settings['yaml-language-server']['workspace_config']['customTags'] =
+				\ map(copy(s:d.s), {_,j -> '!type:'.j[0].n.' mapping'})
+
+	" TODO: This can probably be generalized to include prototypes, right? But
+	" those concern [DataFields], while serializables implicitly use all fields.
+	" Both BuildSerializables and BuildHierarchy should ideally get rid of all
+	" unknown- types
+	echom 'Non-prototype Hierarchy'
+	call s:BuildHierarchy(template, s:d.in)
 
 	echom '[ExplicitDataDefinition]s...'
 	for el in s:d.e
-		call s:BuildExplicitDataDefinition(s:d, ddmap, template, el)
+		call s:BuildExplicitDataDefinition(template, el)
 	endfor
 
 	echom '[ImplicitDataDefinition]s... (including Components)'
 	" Handle components, e.g. ['Paper', 'PlantHolder', ...]
 	let unRegistered = {}
-	let ScanComponentChildren = {j -> empty(has_key(j[0], 'c') ? map(copy(j[0].c), {_,l -> ScanComponentChildren(l)}): 0) ? s:BuildComponentDefinition(s:d, unRegistered, ddmap, template, j) : s:BuildComponentDefinition(s:d, unRegistered, ddmap, template, j)}
-	let ScanImplicitDDChildren = {j -> empty(has_key(j[0], 'c') ? map(copy(j[0].c), {_,l -> ScanImplicitDDChildren(l)}): 0) ? s:BuildImplicitDataDefinition(s:d, ddmap, template, j) : s:BuildImplicitDataDefinition(s:d, ddmap, template, j)}
+	let ScanComponentChildren = {j -> empty(has_key(j[0], 'c') ? map(copy(j[0].c), {_,l -> ScanComponentChildren(l)}): 0) ? s:BuildComponentDefinition(unRegistered, template, j) : s:BuildComponentDefinition(unRegistered, template, j)}
+	let ScanImplicitDDChildren = {j -> empty(has_key(j[0], 'c') ? map(copy(j[0].c), {_,l -> ScanImplicitDDChildren(l)}): 0) ? s:BuildImplicitDataDefinition(template, j) : s:BuildImplicitDataDefinition(template, j)}
 	for il in s:d.i
 		if il[0].n ==# 'Component'
 			call ScanComponentChildren(il)
@@ -91,24 +134,31 @@ function! robusttoolbox#GenSchema() abort
 	echom 'Unregistered Components...'
 	" Now handle unregistered components as long as they're not in ddmap
 	for [name, dd] in items(unRegistered)
-		if index(values(ddmap), name) == -1
+		if index(values(s:ddmap), name) == -1
 			" We have a component [DataDefinition] we can add without conflict
-			let ddmap[dd[0].s.'.'.dd[0].n] = name
-			call s:BuildComponentDefinitionInner(s:d, ddmap, template, dd, name)
+			let s:ddmap[dd[0].s . '.' . dd[0].n] = name
+			call s:BuildComponentDefinitionInner(template, dd, name)
 		else
 			echom 'skipped registered component to avoid duplicate: '.name
 		endif
 	endfor
 
 	" Populate Color enumeration... is in OpenTK and not an enum sadly
-	call s:BuildColorDefinition(s:d, template)
+	call s:BuildColorDefinition(template)
 
 	echom '[Prototype]s...'
 	" Handle prototypes, e.g. ['entity', 'shader', ...]
 	let s:nonDD = {}
 	for pl in s:d.p
-		call s:BuildPrototypeDefinition(s:d, ddmap, template, pl)
+		call s:BuildPrototypeDefinition(template, pl)
 	endfor
+
+	echom '[robusttoolbox] '.reltimestr(reltime(tI)).'s Schema generated'
+
+
+	call filter(s:unresolved_on_first_pass, {_,j -> !has_key(template['$defs'].definitions, '!type:' . j[0].n)})
+	echom 'unresolved types: '.len(s:unresolved_on_first_pass)
+	let g:unresolved = s:unresolved_on_first_pass
 
 	let out = json_encode(template)
 	let out_dir = gutentags#get_project_root(getcwd()).'/Resources/Schemas'
@@ -117,10 +167,200 @@ function! robusttoolbox#GenSchema() abort
 	endif
 	let out_file = out_dir.'/prototypes.json'
 	call writefile([out], out_file, 'S')
+	echom '[robusttoolbox] '.reltimestr(reltime(tI)).'s Schema written'
+	let out = json_encode(
+		\ { 'workspace_config':
+			\ { 'customTags': g:lsp_settings['yaml-language-server']['workspace_config']['customTags']}})
+	let out_file = out_dir.'/workspace.json'
+	call writefile([out], out_file, 'S')
+	echom '[robusttoolbox] '.reltimestr(reltime(tI)).'s workspace/customTags written'
+endfunction
+
+" Builds classes and structs with [Serializable], and also all enums
+function! s:BuildSerializables(dsh, template)
+	" Build all enums regardless of [Serializable]
+	let defs = a:template['$defs'].definitions
+	for s in s:d.G
+		let description = 'C# def: enum' . ' ' . s.n .
+			\ (has_key(s, 't') && !empty(s.t) ? (' : ' . s.t) : '')
+		" Could possibly do a oneOf {string, x}, where "enum foo : x"
+		let name = '!type:'.s.n
+		let defs[name] = {
+			\ 'type': 'string',
+			\ 'enum': reduce(s.e, {l,i -> add(l, i.n)}, []),
+			\ 'description': '[Enum]'.description,
+			\ }
+		" Later calls to s:resolvename will point at this !type:name, no need for
+		" E|P|I prefix due to the use of s:resolvename
+		let s:ddmap[s.s . '.' . s.n] = name
+	endfor
+
+	" Build all [Serializable]
+	" See RequestPerformActionEvent ctors, will have to have oneOf
+	" [properties:{}, properties:{}, properties{}] for each ctor with required
+	" Will have to enumerate ctors, and then enumerate each parameter list
+	" unless it is a [DataDefinition] or Inherits from an [ImplicitDataDefinition]
+	for s in s:d.s
+		" Assume first partial has everything, even ctors from all partials were
+		" queried and put on first partial
+		let description = 'C# def: ' . s[0].t . ' ' . s[0].s . s[0].n .
+			\ (empty(s[0].i) ? '' : (' : ' . s[0].i))
+		let name = '!type:'.s[0].n
+		let defs[name] = {
+			\ 'type': 'object',
+			\ 'properties': {},
+			\ 'description': description,
+			\ }
+		let s:ddmap[s[0].s . '.' . s[0].n] = name
+
+		" properties based on ctor parameter lists
+		if len(s[0].H) == 1
+			call s:handle_plist_token(a:dsh, defs[name]['properties'], s[0].H[0].pl[1:-2], s[0].H[0].f, s[0].H[0].s)
+		elseif len(s[0].H) > 1
+			" Put each in oneOf
+			let defs[name]['oneOf'] = []
+			for i in range(len(s[0].H))
+				let oneOf = {'properties': {}}
+				call s:handle_plist_token(a:dsh, oneOf['properties'], s[0].H[i].pl[1:-2], s[0].H[i].f, s[0].H[i].s)
+				call add(defs[name]['oneOf'], oneOf)
+			endfor
+		endif
+	endfor
+endfunction
+
+" Get the types using s:map_type
+" TODO: But what are the names? The parameter list names or the names on the
+" containing class/struct? What if no ctor? Implicitly use names?
+" TODO: Failure to parse sequential parameters with <>:
+" "entry with str: "\n        Dictionary<int, List<Vector2i>>? spaceTiles,\n Dictionary<EntityUid, Dictionary<int, List<Vector2i>>> tiles,\n        Matrix3 spaceMatrix,\n        ushort spaceTileSize"
+" default: ['\n        Matrix3 spaceMatrix,\n        ushort spaceTileSize', '', '', '\n        Matrix3 spaceMatrix,\n        ushort spaceTileSize', '', '', '', '', '', '']
+" tiles: {'required': v:true, 'type': {'description': 'C# def: Dictionary<int, List<Vector2i>>? spaceTiles,\n        Dictionary<
+" EntityUid, Dictionary<int, List<Vector2i>>>', 'additionalProperties':
+" {'description': 'C# def: List<Vector2i>>? spaceTiles,\n
+"        Dictionary<EntityUid, Dictionary<int, List<Vector2i>>', 'type':
+"        'array', 'items': {'description': 'unknown-C# def: Vect
+"        or2i>>? spaceTiles,\n        Dictionary<EntityUid, Dictionary<int,
+"        List<Vector2i>', 'type': 'object'}}, 'type': 'object', 'pro
+"        pertyNames': {'allOf': [{'$ref':
+"        '#/$defs/definitions/ENUM_int'}]}}}"
+"		DONE I think, didn't validate
+" TODO: Handle tuple paramters:
+"		"(TimeSpan, TimeSpan) cooldown, bool refresh, string?"
+"		"bool? antagonist, (string name, EntityUid)[] allies"
+"		DONE I think, didn't validate
+"	TODO: Handle ref parameters:
+"		"ref Matrix3 matrix"
+"		DONE I think, didn't validate
+" relevantComponent=null"
+" [in|out] properties: the {properties: {}} dictionary to populate with str
+"  parsed
+" [in] str: the property list, e.g. 'int foo, float bar'
+" [in] f: file str is in
+" [in] scope: scope of containing type
+function! s:handle_plist_token(dsh, properties, str, f, scope)
+	" NOTE: Appears that matchlist translates input char "\n" to string '\n' so
+	" have to match for both... \%(\n\|\\n\)
+	" Also jump over 'ref' keyword if there
+	let Prune = {s -> matchlist(s, '\V\^\%(\[\n\t ]\|\\n\|\\t\)\*\%(ref \)\?\(\.\*\)\?')}
+	let Type = {s -> matchlist(s, '\V\^\(\[a-zA-Z0-9.]\+\)\(\.\*\)\?')}
+	let Tuple = {s -> matchlist(s, '\V\^\((\[^)]\*)\)\(\.\*\)\?')}
+	let Brak = {s -> matchlist(s, '\V\^<\(\[^<>]\+\)\(\.\*\)\?')}
+	let SBrak = {s -> matchlist(s, '\V\^[\(\[^]]\*\)]\(\.\*\)\?')}
+	let Nullable = {s -> matchlist(s, '\V\^?\(\.\*\)\?')}
+	let Name = {s -> matchlist(s, '\V\^\[\n\t ]\*\(\[^,=\n\t $]\+\)\[\n\t ]\*,\?\(\.\*\)\?')}
+	let Defa = {s -> matchlist(s, '\V\^\(=\[\n\t ]\*\(\[^,$]\+\)\[\n\t ]\*\)\?,\?\[\n\t ]\*\(\.\*\)\?')}
+	"echom '===================='
+	"echom 'entry with str: "'.a:str.'"'
+	let pruned = Prune(a:str)
+	if !empty(pruned)
+		let token = Type(pruned[1])
+		if empty(token)
+			"Try tuple
+			let token = Tuple(pruned[1])
+		endif
+		if !empty(token)
+			let ttype = token[1]
+			let remainder = token[2]
+			"echom 'token: '.string(token)
+			let type_brak = Brak(remainder)
+			while !empty(type_brak)
+				let ttype = ttype.'<'.type_brak[1]
+				let remainder = type_brak[2]
+				while remainder[0] == '>'
+					let ttype = ttype.'>'
+					let remainder = remainder[1:]
+				endwhile
+				let type_brak = Brak(remainder)
+			endwhile
+			"echom 'remainder after brak: '.remainder
+			let type_sbrak = SBrak(remainder)
+			if !empty(type_sbrak)
+				let ttype = ttype.'['.type_sbrak[1].']'
+				let remainder = type_sbrak[2]
+			endif
+			"echom 'remainder after sbrak: '.remainder
+			let type_nullable = Nullable(remainder)
+			if !empty(type_nullable)
+				let ttype = ttype.'?'
+				let remainder = type_nullable[1]
+			endif
+			let name = Name(remainder)
+			if empty(name)
+				echom 'empty name for str: '.a:str.' type: '.ttype.' string remainder: '.remainder
+			endif
+			let remainder = name[2]
+			let name = name[1]
+			let ttype = s:map_type(a:dsh, {'t':ttype, 'f': a:f, 's': a:scope})
+			let a:properties[name] = {'type': ttype}
+			let default = Defa(remainder)
+			"echom 'default: '.string(default)
+			if !empty(default)
+				let remainder = default[3]
+			endif
+			if empty(default[2])
+				let a:properties[name]['required'] = v:true
+			else
+				let a:properties[name]['description'] = 'Default: '.default[2]
+			endif
+			"echom name.': '.string(a:properties[name])
+			" Process remainder
+			if !empty(remainder)
+				call s:handle_plist_token(a:dsh, a:properties, remainder, a:f, a:scope)
+			endif
+		endif
+	endif
+endfunction
+
+" First write a skeleton then later fill it with properties?
+function! s:BuildHierarchy(template, set)
+	let defs = a:template['$defs'].definitions
+	let ret = []
+	for s in a:set
+		let description = 'C# def: ' . s.t . ' ' . s.s . '.' . s.n .
+			\ (empty(s.i) ? '' : (' : ' . s.i))
+		let name = '!type:'.s.n
+		let defs[name] =  {
+			\ 'type': 'object',
+			\ 'properties' : {},
+			\ 'description': description,
+			\ }
+		" TODO: What about structs that don't have 'h'? Always sealed?
+		if !has_key(s, 'h') || has_key(s, 'h') && s.h !=# 'sealed'
+			" TODO: Will the oneOf work with child schema resolution? Or
+			"  should I accumulate all subchildren? return concat(ret,
+			"  defs[name]['oneOf'])
+			let defs[name]['oneOf'] = s:BuildHierarchy(a:template, s.c)
+		else
+			let defs[name]['additionalProperties'] = v:false
+		endif
+		let s:ddmap[s.s . '.' . s.n] = name
+		call add(ret, {'$ref' : '#/$defs/definitions/'.name})
+	endfor
+	return ret
 endfunction
 
 " Builds each prototype schema and puts in #/definitions
-function! s:BuildPrototypeDefinition(d, ddmap, template, dd)
+function! s:BuildPrototypeDefinition(template, dd)
 	" May be partial class, attribute/inherits on one not the other
 	let yn = ''
 	let inherits = []
@@ -156,9 +396,8 @@ function! s:BuildPrototypeDefinition(d, ddmap, template, dd)
 		\ }
 	\ }
 
+	" TODO: Move these into s: scope...?
 	let dsh = {
-		\ 'd': a:d,
-		\ 'ddmap': a:ddmap,
 		\ 'sNode': a:template.definitions[yn],
 		\ 'sDefinitions': a:template.definitions,
 		\ 'sDefs': a:template['$defs'].definitions,
@@ -177,26 +416,35 @@ function! s:BuildPrototypeDefinition(d, ddmap, template, dd)
 			echom yn.' parent '.parent.' had scope, is now '.scopeSuffix.'.'.m[2]
 			let parent = m[2]
 		endif
-		for e in dsh.d.e
+		for e in s:d.e
 			if e[0].n ==# parent && e[0].s =~# scopeSuffix
-				let found = s:resolvename(dsh, e, 'E')
+				let found = s:resolvename(dsh, e, '!type:')
 				" additionalProperties: {} causes weird issue with entityTargetAction
 				call add(a:template.definitions[yn].allOf,
 					\ {
 						\ '$ref': '#/$defs/definitions/'.found,
-						\ 'additionalProperties': v:false
+						\ 'additionalProperties': v:true
 						\ })
 				break
 			endif
 		endfor
 		if !found
-			let r = s:Scan(dsh, dsh.d.i, parent, scopeSuffix)
+			let r = s:Scan(dsh, s:d.i, parent, scopeSuffix)
 			if type(r) == v:t_dict
-				let r.additionalProperties = v:false
+				let r.additionalProperties = v:true
 				call add(a:template.definitions[yn].allOf, r)
 				let found = split(r['$ref'], '/')[-1]
 			endif
 		endif
+		" TODO: Now try interfaces, but need to translate that datastructure to partials
+		"if !found
+			" let r = s:ScanInterfaces(dsh, s:d.in, parent, scopeSuffix)
+			" if type(r) == v:t_dict
+				" let r.additionalProperties = v:false
+				" call add(a:template.definitions[yn].allOf, r)
+				" let found = split(r['$ref'], '/')[-1]
+			" endif
+		" endif
 		if found == v:false
 			echom 'not found '.parent.' for '.yn.' : '.parent
 			let s:nonDD[parent] = v:true
@@ -214,7 +462,7 @@ function! s:BuildPrototypeDefinition(d, ddmap, template, dd)
 	call s:ParseDataFields(dsh, a:dd, v:false)
 endfunction
 
-function! s:BuildComponentDefinition(d, unRegistered, ddmap, template, dd)
+function! s:BuildComponentDefinition(unRegistered, template, dd)
 	let name = a:dd[0].n
 	" Check if this component has [RegisterComponent]
 	let isRegisterComponent = v:false
@@ -274,8 +522,6 @@ function! s:BuildComponentDefinition(d, unRegistered, ddmap, template, dd)
 		" Handle top-level separately
 		" TODO: Can generalize this into 'abstract or non-sealed' procedure
 		let dsh = {
-			\ 'd': a:d,
-			\ 'ddmap': a:ddmap,
 			\ 'sNode': a:template.definitions['Component'],
 			\ 'sDefinitions': a:template.definitions,
 			\ 'sDefs': a:template['$defs'].definitions,
@@ -292,9 +538,9 @@ function! s:BuildComponentDefinition(d, unRegistered, ddmap, template, dd)
 			let a:unRegistered[name] = a:dd
 		endif
 	else
-		if index(values(a:ddmap), name) == -1
-			let a:ddmap[a:dd[0].s.'.'.a:dd[0].n] = name
-			call s:BuildComponentDefinitionInner(a:d, a:ddmap, a:template, a:dd, name)
+		if index(values(s:ddmap), name) == -1
+			let s:ddmap[a:dd[0].s.'.'.a:dd[0].n] = name
+			call s:BuildComponentDefinitionInner(a:template, a:dd, name)
 		else
 		endif
 	endif
@@ -317,7 +563,7 @@ function s:BuildDescription(dd, name_yaml)
 	return [scope, scopeStr, description]
 endfunction
 
-function s:BuildComponentDefinitionInner(d, ddmap, template, dd, name)
+function s:BuildComponentDefinitionInner(template, dd, name)
 	let name_yaml = a:name
 	" Use C prefix in schema to prevent name conflict with prototypes
 	let name_schema = 'C'.name_yaml
@@ -342,8 +588,6 @@ function s:BuildComponentDefinitionInner(d, ddmap, template, dd, name)
 		\ }
 	\ }
 	let dsh = {
-		\ 'd': a:d,
-		\ 'ddmap': a:ddmap,
 		\ 'sNode': a:template.definitions[name_schema],
 		\ 'sDefinitions': a:template.definitions,
 		\ 'sDefs': a:template['$defs'].definitions,
@@ -351,23 +595,25 @@ function s:BuildComponentDefinitionInner(d, ddmap, template, dd, name)
 	call s:ParseDataFields(dsh, a:dd, v:true)
 endfunction
 
-function! s:BuildExplicitDataDefinition(d, ddmap, template, dd)
+function! s:BuildExplicitDataDefinition(template, dd)
 	let name_yaml = a:dd[0].n
 	" Use E prefix in schema to prevent name conflict with prototypes/others
-	let name_schema = 'E'.name_yaml
+	" Looks like in yaml I've seen !type:PhysShapeAabb, and Exlicit Data
+	" Definition, so we should do away with E prefix and just use !type.
+	let name_schema = '!type:'.name_yaml
 	let [scope, scopeStr, description] = s:BuildDescription(a:dd, name_yaml)
 	" Use the first scope... there may be more though...
 	let qname = scope[0].'.'.a:dd[0].n
-	if has_key(a:ddmap, qname)
-		if a:ddmap[qname] !=# name_schema
+	if has_key(s:ddmap, qname)
+		if s:ddmap[qname] !=# name_schema
 			echom 'anomaly in BuildExplicitDataDefinition '.qname.
-				\ ' already in ddmap as '.a:ddmap[qname].' but doesn't match '.
+				\ ' already in ddmap as '.s:ddmap[qname].' but doesn't match '.
 				\ name_schema
 		else
 			return
 		endif
 	endif
-	let a:ddmap[qname] = name_schema
+	let s:ddmap[qname] = name_schema
 
 	let a:template['$defs'].definitions[name_schema] = {
 		\ '$id': '#/$defs/definitions/'.name_schema,
@@ -378,8 +624,6 @@ function! s:BuildExplicitDataDefinition(d, ddmap, template, dd)
 		\ }
 	\ }
 	let dsh = {
-		\ 'd': a:d,
-		\ 'ddmap': a:ddmap,
 		\ 'sNode': a:template['$defs'].definitions[name_schema],
 		\ 'sDefinitions': a:template.definitions,
 		\ 'sDefs': a:template['$defs'].definitions,
@@ -387,14 +631,12 @@ function! s:BuildExplicitDataDefinition(d, ddmap, template, dd)
 	call s:ParseDataFields(dsh, a:dd, v:false)
 endfunction
 
-function! s:BuildImplicitDataDefinition(d, ddmap, template, dd)
+function! s:BuildImplicitDataDefinition(template, dd)
 endfunction
 
 " Parses the datafields (df) for definition (dn) and stores in template
 " Params:
 "  [in] dsh: Dict containing the following:
-"    [in] d: Definitions parsed from ctags file(s)
-"    [in/out] ddmap: Qualified name to definition name mapping
 "    [in/out] sNode: The schema node to put datafields/required on
 "    [in/out] sDefinitions: '#/definitions/' for lookups
 "    [in/out] sDefs: The schema node to put datafield types on
@@ -429,7 +671,7 @@ function! s:ParseDataFields(dsh, dd, recursive)
 		"  includes (Client|Server)StackComponent : SharedStackComponent,
 		"  the solution seems to be... either proper abstraction, or if
 		"  we already traversed this parent then don't do it again
-		if a:recursive && has_key(partial, 'p')
+		if a:recursive && !empty(partial.p)
 			let check = partial.p[0].s.'.'.partial.p[0].n
 			if index(traversed_parents, check) != -1
 				continue
@@ -446,8 +688,8 @@ function! s:ParseDataFields(dsh, dd, recursive)
 	endif
 endfunction
 
-function! s:BuildColorDefinition(d, template)
-	let colors = map(copy(a:d.colors), {i,j -> j.n})
+function! s:BuildColorDefinition(template)
+	let colors = map(copy(s:d.colors), {i,j -> j.n})
 	let a:template.definitions.Color.oneOf[0].enum = colors
 endfunction
 
@@ -472,17 +714,27 @@ let s:typemap_simple = {
 	\	'ulong': 'nonNegativeInteger'
 	\ }
 
+" TODO: May be able to drop NPCBlackbordSerializer and HTNTaskListSerializer
+" as they're found in template.json and need no special handling?
+" No, looks like if dropped then they're interpreted as array...
+" Oh, maybe reloading dedefines the functions but not this script s: variable
+" Ok so reloaded and looks like it doesn't work... uses base type not
+" customTypeSerializer
+" Added PrototypeIdValueDictionarySerializer, hope it works, maybe not
+" backwards?
 let s:typemap_customTypeSerializer = {
 	\ '\V\^FlagSerializer<\(\.\+\)>\$': 'FlagSerializer',
 	\ '\V\^ConstantSerializer<\(\.\+\)>\$': 'ConstantSerializer',
 	\ '\V\^PrototypeIdSerializer<\(\.\+\)>\$': 'PrototypeIdSerializer',
 	\ '\V\^PrototypeIdListSerializer<\(\.\+\)>\$': 'PrototypeIdListSerializer',
+	\ '\V\^PrototypeIdArraySerializer<\(\.\+\)>\$': 'PrototypeIdArraySerializer',
 	\ '\V\^PrototypeIdHashSetSerializer<\(\.\+\)>\$': 'PrototypeIdHashSetSerializer',
 	\ '\V\^PrototypeIdDictionarySerializer<\(\[^,]\{-}\), \?\(\.\*\)>\$': 'PrototypeIdDictionarySerializer',
+	\ '\V\^PrototypeIdValueDictionarySerializer<\(\[^,]\{-}\), \?\(\.\*\)>\$': 'PrototypeIdValueDictionarySerializer',
 	\ '\V\^AbstractPrototypeIdArraySerializer<\(\.\+\)>\$': 'AbstractPrototypeIdArraySerializer',
-	\ '\V\^NPCBlackboardSerializer\$': 'NPCBlackboardSerializer',
-	\ '\V\^HTNTaskListSerializer\$': 'HTNTaskListSerializer',
 	\ }
+	"\ '\V\^NPCBlackboardSerializer\$': 'NPCBlackboardSerializer',
+	"\ '\V\^HTNTaskListSerializer\$': 'HTNTaskListSerializer',
 
 " Handles PrototypeFlags<IPrototype>, not a customTypeSerializer
 let s:typemap_Prototype = {
@@ -502,42 +754,6 @@ let s:typemap_recurse = {
 	\ '\V\^(\(\[^,]\+\%( \[^,]\+\)\?\)\%(, \?\)\(\[^,]\+\%( \[^,]\+\)\?\)\%(, \?\(\[^,]\+\%( \[^,]\+\)\?\)\)\?\%(, \?\(\[^,]\+\%( \[^,]\+\)\?\)\)\?\%(, \?\(\[^,]\+\%( \[^,]\+\)\?\)\)\?)\$': 'tuple',
 	\ }
 
-let s:typemap_replace = {
-	\	'ComponentRegistry': '',
-	\	'char': '',
-	\	'ResourcePath': '',
-	\	'SpriteSpecifier': '',
-	\	'Color': '',
-	\	'EntityUid': '',
-	\ 'GridId': '',
-	\ 'Enum': '',
-	\	'Regex': '',
-	\	'Angle': '',
-	\	'FixedPoint2': '',
-	\	'FormattedMessage': '',
-	\	'Box2': '',
-	\	'TimeSpan': '',
-	\	'Vector2': '',
-	\	'Vector2i': '',
-	\	'Vector4': '',
-	\	'IAlertClick': '',
-	\	'IConstructionCondition': '',
-	\	'IObjectiveCondition': '',
-	\	'IObjectiveRequirement': '',
-	\	'IGasReactionEffect': '',
-	\	'IHolidayCelebrate': '',
-	\	'IHolidayGreet': '',
-	\	'IHolidayShouldCelebrate': '',
-	\	'IParallaxTextureSource': '',
-	\	'IPhysShape': '',
-	\	'IThresholdBehavior': '',
-	\	'IThresholdTrigger': '',
-	\	'ITileReaction': '',
-	\	'IGraphAction': '',
-	\	'IGraphCondition': '',
-	\	'IWireAction': '',
-	\ }
-
 let s:is_nullable = '\V\^\(\.\*\)\(?\)\$'
 let s:has_scope = '\V\^\(\.\+\).\(\.\+\)\$'
 
@@ -551,16 +767,14 @@ let s:has_scope = '\V\^\(\.\+\).\(\.\+\)\$'
 "  If not (nullable-)simple type then recurse
 " Params:
 "  [in] dsh: a dict containing the following:
-"    [in] d: The {p, i, e, G, ..., yids} definitions built by
-"     parseCS+parseYAML from the ctags file(s)
-"    [in/out] ddmap: dictionary, maps qualified name (scope.name)
-"     to $defs name to avoid conflicts and not have long names in $defs
 "    [іn/out] sDefinitions: is '$defs' element of schema, an output
 "    [in/out] sDefs: is '$defs' element of schema, an output
 "     $defs contain [DataField]s, definitions contain [DataDefinition]s
 "  [in] df.t: the type being resolved, e.g. 'Dictionary<string, int?>?[]'
 "   When df only has t key it means there is no ѕcope, it is a lookup
 "   only on type, so ideal to have all [DataDefinition]s defined already
+"  [in] df.f: the file the type being resolved is in, for usings queries
+"  [in] df.s: the scope of the containing lookup
 " Returns:
 "  Dictionary representing type element in schema { type: ... }
 function! s:map_type(dsh, df)
@@ -573,7 +787,7 @@ function! s:map_type(dsh, df)
 	for [k,v] in items(s:typemap_Prototype)
 		let m = matchlist(a:df.t, k)
 		if !empty(m)
-			return s:HandleSerializerTypemap(a:dsh, v, m, description)
+			return s:HandleSerializerTypemap(a:dsh, v, m, description, a:df.f, a:df.s)
 		endif
 	endfor
 
@@ -582,17 +796,23 @@ function! s:map_type(dsh, df)
 		for [k,v] in items(s:typemap_customTypeSerializer)
 			let m = matchlist(a:df.a.c, k)
 			if !empty(m)
-				return s:HandleSerializerTypemap(a:dsh, v, m, description)
+				return s:HandleSerializerTypemap(a:dsh, v, m, description, a:df.f, a:df.s)
 			endif
 		endfor
+		" Assume it is within template.json, e.g. 'NPCBlackboardSerializer', 'HTNTaskListSerializer'
+		" Hmmmm, I think that their base should be shim'd as it isn't a
+		" [DataDefinition], this Serializer suffix won't map to that shim
+		"return s:HandleSerializerTypemap(a:dsh, a:df.a.c, [a:df.a.c, '', ''], description)
 	endif
 
 	let nullable = v:false
 	let rt = a:df.t
+	let rt_scoped = rt
 	let m = matchlist(a:df.t, s:is_nullable)
 	if len(m) > 0
 		let nullable = v:true
 		let rt = m[1]
+		let rt_scoped = rt
 	endif
 
 	for [k,v] in items(s:typemap_recurse)
@@ -607,8 +827,8 @@ function! s:map_type(dsh, df)
 				"if m[1] !~# '^string$'
 					"TODO: In readtags look up validate usings to ensure correct one
 				"endif
-				let domain = s:map_type(a:dsh, {'t':m[1]})
-				let range = s:map_type(a:dsh, {'t':m[2]})
+				let domain = s:map_type(a:dsh, {'t':m[1], 'f':a:df.f, 's':a:df.s})
+				let range = s:map_type(a:dsh, {'t':m[2], 'f':a:df.f, 's':a:df.s})
 				" TODO: see meat.yml and soup.yml nested dict in list problems
 				"let range.description = description
 				let stype = {
@@ -638,11 +858,11 @@ function! s:map_type(dsh, df)
 					"echom 'for m[0]: '.m[0].' see m[1]: '.m[1].' m[2]: '.m[2]
 					let t1 = split(m[1])
 					let t2 = split(m[2])
-					let t1t = {'t':t1[0]}
+					let t1t = {'t':t1[0], 'f':a:df.f, 's':a:df.s}
 					if len(t1) > 1
 						let t1t.n = t1[1]
 					endif
-					let t2t = {'t':t2[0]}
+					let t2t = {'t':t2[0], 'f':a:df.f, 's':a:df.s}
 					if len(t2) > 1
 						let t2t.n = t2[1]
 					endif
@@ -665,7 +885,7 @@ function! s:map_type(dsh, df)
 			endif
 			let stype = {
 				"\ 'type': (nullable?'nullable-':'').'array',
-				\ 'items': s:map_type(a:dsh, {'t':m[1]}),
+				\ 'items': s:map_type(a:dsh, {'t':m[1], 'f':a:df.f, 's':a:df.s}),
 				\ 'description': description
 				\ }
 			if nullable
@@ -680,16 +900,21 @@ function! s:map_type(dsh, df)
 		endif
 	endfor
 
+	" If scope is at all in the code, it is likely to be just a suffix rather
+	" than fully resolved type
 	let scopeSuffix = ''
 	let m = matchlist(a:df.t, s:has_scope)
 	if len(m) > 0
 		let scopeSuffix = escape(m[1], '.').'$'
-		let rt = m[2]
+		let rt_noscope = m[2]
+	else
+		let rt_noscope = rt
 	endif
+	unlet rt
 
-	if has_key(s:typemap_simple, rt)
+	if has_key(s:typemap_simple, rt_noscope)
 		"return { 'type': (nullable?'nullable-':'').s:typemap_simple[rt] }
-		let tt = s:typemap_simple[rt]
+		let tt = s:typemap_simple[rt_noscope]
 		if !empty(scopeSuffix)
 			echom 'unhandled scope '.scopeSuffix.' for type '.tt
 		endif
@@ -702,27 +927,89 @@ function! s:map_type(dsh, df)
 		endif
 		if nullable
 			return {
-				\ 'allOf': [{ '$ref': '#/definitions/nullable-'.s:typemap_simple[rt] }],
+				\ 'allOf': [{ '$ref': '#/definitions/nullable-'.s:typemap_simple[rt_noscope] }],
 				\ "description": description
 				\ }
 		else
 			return {
-				\ 'type': s:typemap_simple[rt],
+				\ 'type': s:typemap_simple[rt_noscope],
 				\ 'description': description
 				\ }
 		endif
 	endif
 
+	" This should replace most everything below which scans E|I|G,
+	"  and should replace those peeks into #/$defs/defininions and #/definitions
+	if has_key(s:d.U, a:df.f)
+		" Try with scopeSuffix on top of the usings first
+		let matches = filter(copy(s:d.U[a:df.f]), {_,j -> has_key(s:ddmap, j.n.'.'.rt_scoped)})
+		if len(matches) > 0
+			if len(matches) > 1
+				echom 'Resolving type '.rt_scoped.' against usings in same file yielded > 1 match'
+			endif
+			let ret = { '$ref': '#/$defs/definitions/'.s:ddmap[matches[0].n.'.'.rt_scoped] }
+			if has_key(a:df, 'd') && !empty(a:df.d) && a:df.d !=# 'new()'
+				let ret['description'] = description
+			endif
+			return ret
+		elseif !empty(scopeSuffix)
+			let matches = filter(copy(s:d.U[a:df.f]), {_,j -> has_key(s:ddmap, j.n.'.'.rt_noscope)})
+			if len(matches) > 0
+				if len(matches) > 1
+					echom 'Resolving type '.rt_noscope.' against usings in same file yielded > 1 match'
+				endif
+				let ret = { '$ref': '#/$defs/definitions/'.s:ddmap[matches[0].n.'.'.rt_noscope] }
+				if has_key(a:df, 'd') && !empty(a:df.d) && a:df.d !=# 'new()'
+					let ret['description'] = description
+				endif
+				return ret
+			endif
+		endif
+	endif
+	" Since not found in usings, try the namespace of the type and keep going up:
+	let scope = a:df.s
+	while !empty(scope)
+		if has_key(s:ddmap, scope . '.' . rt_scoped)
+			let ret = { '$ref': '#/$defs/definitions/'.s:ddmap[scope.'.'.rt_scoped] }
+			if has_key(a:df, 'd') && !empty(a:df.d) && a:df.d !=# 'new()'
+				let ret['description'] = description
+			endif
+			return ret
+		elseif !empty(scopeSuffix) && has_key(s:ddmap, scope . '.' . rt_noscope)
+			let ret = { '$ref': '#/$defs/definitions/'.s:ddmap[scope.'.'.rt_noscope] }
+			if has_key(a:df, 'd') && !empty(a:df.d) && a:df.d !=# 'new()'
+				let ret['description'] = description
+			endif
+			return ret
+		endif
+		" Try next level up
+		let scope = matchlist(scope, '\V\(\.\*\).\.\*\$')
+		if !empty(scope)
+			let scope = scope[1]
+		endif
+	endwhile
+
 	" When something isn't easily deduced via algorithm on ctags data,
 	"  it is preferrable to use a shim in the template.json file,
 	"  These are those types
-	if has_key(s:typemap_replace, rt)
+	if has_key(g:template['definitions'], rt_noscope)
 		if !empty(scopeSuffix)
 			" TODO: validate against scopeSuffix
-			echom 'unhandled scope '.scopeSuffix.' for type '.rt
+			echom 'unhandled scope '.rt_scoped.' for type '.rt_noscope
 		endif
 		return {
-			\ '$ref': '#/definitions/'.rt,
+			\ '$ref': '#/definitions/'.rt_noscope,
+			\ 'description': description
+			\ }
+	elseif has_key(g:template['$defs']['definitions'], rt_noscope)
+		" TODO: This branch only happens for SoundSpecifier variants... I think?
+		" Otherwise customTypeSerializers, but those are elsewhere...
+		if !empty(scopeSuffix)
+			" TODO: validate against scopeSuffix
+			echom 'unhandled scope '.rt_scoped.' for type '.rt_noscope
+		endif
+		return {
+			\ '$ref': '#/$defs/definitions/'.rt_noscope,
 			\ 'description': description
 			\ }
 	endif
@@ -746,7 +1033,7 @@ function! s:map_type(dsh, df)
 	" Can cache/map C# type to yaml defs/defininitions instead to speed
 	"  up schema gen
 	"let qname = a:dd[0].s.'.'.a:dd[0].n
-	"if index(values(a:dsh.ddmap), t) != -1
+	"if index(values(s:ddmap), t) != -1
 	"	if has_key(a:dsh.sDefinitions, 'C'.t)
 	"		echom 'found '.t.'Component in definitions'
 	"		return {
@@ -771,12 +1058,12 @@ function! s:map_type(dsh, df)
 	"	endif
 	"endif
 
-	" Search a:dsh.d.i a:dsh.d.e for [DataDefinition] of name t
+	" Search s:d.i s:d.e for [DataDefinition] of name t
 	" NOTE: At present doesn't parse for usings within the prototype,
 	"  No [DataDefinitions] have same name I hope?
-	for e in a:dsh.d.e
-		if e[0].n ==# rt && e[0].s =~# scopeSuffix
-			let n = s:resolvename(a:dsh, e, 'E')
+	for e in s:d.e
+		if e[0].n ==# rt_noscope && e[0].s =~# scopeSuffix
+			let n = s:resolvename(a:dsh, e, '!type:')
 			return {
 				\ '$ref': '#/$defs/definitions/'.n,
 				\ 'description': description
@@ -787,42 +1074,47 @@ function! s:map_type(dsh, df)
 	" Might be best to do a map where the v:true sets the side effect:
 	"{ '$ref': '#/$defs/definitions/'.s:resolvename(a:dsh, k, 'I') }
 	"let S = {i -> filter(copy(i), {_,k -> k[0].n ==# rt ? v:true : (has_key(k[0], 'c') ? S(k[0].c) : v:false)})}
-	"let g:r = S(a:dsh.d.i)
+	"let g:r = S(s:d.i)
 	"if g:r != v:false
 	"	return g:r
 	"endif
 
-	" This filter results in branch of a:dsh.d.i where match is leaf node (in child list or first element), could augment the v:true branch to have side effect:
+	" This filter results in branch of s:d.i where match is leaf node (in child list or first element), could augment the v:true branch to have side effect:
 	"let M = {i -> filter(copy(i), {_,j-> j[0].n ==# rt ? v:true : (has_key(j[0], 'c') ? len(g:M(j[0].c))>0 : v:false)})}
-	"let g:r = M(a:dsh.d.i)
+	"let g:r = M(s:d.i)
 	"if !empty(g:r)
 		" Is on branch in r
 	"endif
 
 	" More efficient than the filter may be to do a for loop to avoid
 	"  extra processing, yet isn't parallel. Maybe map is best.
-	let r = s:Scan(a:dsh, a:dsh.d.i, rt, scopeSuffix)
+	let r = s:Scan(a:dsh, s:d.i, rt_noscope, scopeSuffix)
 	if type(r) == v:t_dict
 		return r
 	endif
 
 	" Now, we still don't know the type, try an enum:
-	for g in a:dsh.d.G
-		if g.n ==# rt && g.s =~# scopeSuffix
-			return {
-				\ 'type': 'string',
-				\ 'enum': reduce(g.e, {l,i -> add(l, i.n)}, []),
-				\ 'description': '[Enum]'.description,
-				\ }
-		endif
-	endfor
+	" TODO: Refactor enum representation in schema, all should be prefixed with
+	" !type:
+	"for g in s:d.G
+	"	if g.n ==# rt && g.s =~# scopeSuffix
+	"		return {
+	"			\ 'type': 'string',
+	"			\ 'enum': reduce(g.e, {l,i -> add(l, i.n)}, []),
+	"			\ 'description': '[Enum]'.description,
+	"			\ }
+	"	endif
+	"endfor
+	" Iterate over all I|E|G or just iterate over all usings with a ddmap
+	" lookup? How to query the usings from rt?
+	" Moved to top of function...
 
 	" Might be a Prototype ID, e.g. LatheRecipePrototype
-	for p in a:dsh.d.p
-		if p[0].n ==# rt && p[0].s =~# scopeSuffix
+	for p in s:d.p
+		if p[0].n ==# rt_noscope && p[0].s =~# scopeSuffix
 			" Name is e.g. '#/$defs/definitions/ENUM_'.LatheRecipePrototype
 			return s:HandleSerializerTypemap(a:dsh, 'PrototypeIdSerializer',
-				\ [rt, rt, ''], description)
+				\ [rt_noscope, rt_noscope, ''], description, a:df.f, a:df.s)
 		endif
 	endfor
 
@@ -835,10 +1127,41 @@ function! s:map_type(dsh, df)
 	" IReadOnlyList appears to be list of entity IDs?
 	" SpriteSpecifier is an [Serializable] abstract class
 	" customTypeSerializer may shed light on type?
-	return {
-		\ 'type': 'object',
-		\ 'description': 'unknown-'.description
+	" TODO: Almost ready to get rid of this?
+	"  Would have to pre-parse types as graph or enque re-runs of unknowns on a
+	"   stack somehow, all in order to know what is unknown-
+	"  Or could relax that constraint and just throw in !type:, but then
+	"   schema will complain on load of only first missing type.
+	" TODO: Need to handle records, and interface+hierarchy, and that will get
+	"  rid of most remaining unknowns. Also relax above constraint for most all.
+	"  What will be left over should go into the template.json file, e.g.
+	"  !type:object
+	"return {
+	"	\ 'type': 'object',
+	"	\ 'description': 'unknown-'.description
+	"	\ }
+	"	Guess the scope, unresolved, maybe it'll lookup successfully?
+	"	KLUDGE: A hidden problem with this appears to be with not resolving scope,
+	"	 may be a problem with name collision
+	"	I think this name collision may be improved by a datastructure
+	"	 like ddmap, rather than scope.name->yamlname, do
+	"	 name->[dd1, dd2, ...] where other dds are for name conflicts
+	"	 each will have their own scope, e.g. dd1[0].s
+	"	TODO: I do wonder if hierarchy should be made first, and e,p,i
+	"	 point into that hierarchy, rather than stitching them together
+	"	 with interfaces. Should make get_Datafields faster, by replacing s:Z3
+	"	 with dictionary[scope] lookup rather than iterating over e,p,i (and i.c)
+	"	 scope->[dd1,dd2,...] should be made with hierarchy
+	"	 Will speed up get_Explicit/Implicit/Prototypes too by dict lookup
+	"	  rather than nested map on filtertag per name+scope
+	let n = s:resolvename(a:dsh, [{'n': rt_noscope, 's':a:df.s}], '!type:')
+	let ret = {
+		\ '$ref': '#/$defs/definitions/'.n,
 		\ }
+	if has_key(a:df, 'd') && !empty(a:df.d) && a:df.d !=# 'new()'
+		let ret['description'] = description
+	endif
+	return ret
 endfunction
 
 " Defines serializer types in $defs with supporting ENUM_ if necessary
@@ -847,8 +1170,10 @@ endfunction
 "  [in] v: type category, see values of e.g. s:typemap_customTypeSerializer
 "  [in] m: matchlist of type on pattern k in caller
 "  [in] description: description of schema type
+"  [in] f: file which type is in, for usings lookups
+"  [in] scope: scope of type
 " returns: schema type derrived from v and m
-function s:HandleSerializerTypemap(dsh, v, m, description)
+function s:HandleSerializerTypemap(dsh, v, m, description, f, scope)
 	let defstr = a:v.
 		\ (!empty(a:m[1]) ? '_'.a:m[1] : '').
 		\ (!empty(a:m[2]) ? '_'.a:m[2] : '')
@@ -859,7 +1184,7 @@ function s:HandleSerializerTypemap(dsh, v, m, description)
 	" Need to define defstr in a:dsh.sDefs if not there
 	if has_key(a:dsh.sDefinitions, defstr) || has_key(a:dsh.sDefs, defstr)
 		"echom 'found customTypeSerializer(...) '.defstr.' in $defs'
-	elseif a:v ==# 'NPCBlackboardSerializer' || 'HTNTaskListSerializer'
+	"elseif a:v ==# 'NPCBlackboardSerializer' || 'HTNTaskListSerializer'
 		" These are not parametric so are in template.json
 		" TaskList appears to be either a mapping or string or array
 	elseif a:v ==# 'FlagSerializer' || a:v ==# 'ConstantSerializer'
@@ -868,8 +1193,8 @@ function s:HandleSerializerTypemap(dsh, v, m, description)
 		let enum = []
 		let enumNames = []
 		let Gsets = {
-			\ 'FlagSerializer': a:dsh.d.FF,
-			\ 'ConstantSerializer': a:dsh.d.CF,
+			\ 'FlagSerializer': s:d.FF,
+			\ 'ConstantSerializer': s:d.CF,
 			\ }
 
 		for G in Gsets[a:v][a:m[1]]
@@ -898,15 +1223,15 @@ function s:HandleSerializerTypemap(dsh, v, m, description)
 				\ 'allOf': [ enumRef ],
 				\ }
 		endif
-	else
+	elseif !empty(a:m[1])
 		let lookup = a:m[1]
-		if a:v ==# 'PrototypeIdDictionarySerializer'
+		if a:v ==# 'PrototypeIdDictionarySerializer' || a:v ==# 'PrototypeIdValueDictionarySerializer'
 			let lookup = a:m[2]
 		endif
 		" TODO: Oh... d.yids is yaml type but we need to convert
 		"  those from C# types, e.g. EntityPrototype->entity
-		let match = filter(copy(a:dsh.d.p), {_,j -> j[0].n ==# lookup})
-		" Find lookup in a:dsh.d.yids
+		let match = filter(copy(s:d.p), {_,j -> j[0].n ==# lookup})
+		" Find lookup in s:d.yids
 		if len(match) == 1
 			for partial in match[0]
 				if has_key(partial, 'yn')
@@ -915,10 +1240,10 @@ function s:HandleSerializerTypemap(dsh, v, m, description)
 				endif
 			endfor
 		else
-			echom 'Failed to find C# prototype specified in '.m[0]
+			echom 'Failed to find C# prototype specified in '.a:m[0].' defstr:'.defstr
 		endif
-		if has_key(a:dsh.d.yids, lookup)
-			let enum = a:dsh.d.yids[lookup]
+		if has_key(s:d.yids, lookup)
+			let enum = s:d.yids[lookup]
 		else
 			echom 'lookup failure in yids for '.lookup
 			let enum = []
@@ -935,7 +1260,7 @@ function s:HandleSerializerTypemap(dsh, v, m, description)
 		let stype = {}
 		if a:v ==# 'PrototypeIdSerializer'
 			let stype['allOf'] = [ enumRef ]
-		elseif a:v ==# 'PrototypeIdListSerializer'
+		elseif a:v ==# 'PrototypeIdListSerializer' || a:v ==# 'PrototypeIdArraySerializer'
 			let stype['type'] = 'array'
 			let stype['items'] = {
 				\ 'allOf': [ enumRef ],
@@ -958,7 +1283,7 @@ function s:HandleSerializerTypemap(dsh, v, m, description)
 						\ },
 					\ },
 				\ ]
-		elseif a:v ==# 'PrototypeIdDictionarySerializer'
+		elseif a:v ==# 'PrototypeIdDictionarySerializer' || a:v ==# 'PrototypeIdValueDictionarySerializer'
 			let stype['type'] = 'object'
 			" IDK why, but the C# type is backwards from YAML
 			" e.g. Dictionary<FixedType2, FooBarPrototype> maps in YAML to
@@ -967,11 +1292,15 @@ function s:HandleSerializerTypemap(dsh, v, m, description)
 				\ 'allOf': [ enumRef ],
 				\ }
 			let stype['propertyNames'] = domain
-			" Need to get the type for a:m[1]
-			"  Assuming it's in C# and not yaml ids?
-			let range = s:map_type(a:dsh, {'t':a:m[1]})
-			" TODO: with domain/range swap idk if this condition valid
-			if has_key(range, 'enum') || a:m[1] !~# '^string$'
+			if a:m[1] !~# '^string$'
+				" Need to get the type for a:m[1]
+				"  Assuming it's in C# and not yaml ids?
+				let range = s:map_type(a:dsh, {'t':a:m[1], 'f': a:f, 's': a:scope})
+				" TODO: with domain/range swap idk if this condition valid
+				"if has_key(range, 'enum') || a:m[1] !~# '^string$'
+				"	let stype['additionalProperties'] = range
+				"endif
+				" TODO: with enum refactor the above was commented, as no enum key
 				let stype['additionalProperties'] = range
 			endif
 		else
@@ -989,7 +1318,7 @@ function! s:Scan(dsh, l, t, scopeSuffix)
 	" For each partial list in list a:l
 	for i in a:l
 		if i[0].n ==# a:t && i[0].s =~# a:scopeSuffix
-			return { '$ref': '#/$defs/definitions/'.s:resolvename(a:dsh, i, 'I') }
+			return { '$ref': '#/$defs/definitions/'.s:resolvename(a:dsh, i, '!type:') }
 		endif
 		if has_key(i[0], 'c')
 			" Bug is here, c is a list of lists: FIXED, NOPE NOT FIXED
@@ -1008,10 +1337,31 @@ function! s:Scan(dsh, l, t, scopeSuffix)
 	return v:false
 endfunction
 
+" Unlike s:Scan, search doesn't have to deal with partial lists, I think it
+" should though??? Still need to hook Interface hierarchy up to rest somehow
+" for the purpose of resolution
+" params:
+"  [in/out] dsh: See s:ParseDataFields() and s:map_type()
+function! s:ScanInterfaces(dsh, l, t, scopeSuffix)
+	for i in a:l
+		if i.n ==# a:t && i.s =~# a:scopeSuffix
+			return { '$ref': '#/$defs/definitions/'.s:resolvename(a:dsh, i, '!type:') }
+		endif
+		" Bug is here, c is a list of lists: FIXED, NOPE NOT FIXED
+		"for c in i[0].c
+			let r = s:ScanInterfaces(a:dsh, i.c, a:t, a:scopeSuffix)
+			if type(r) == v:t_dict
+				return r
+			endif
+		"endfor
+	endfor
+	return v:false
+endfunction
+
 " Builds the definition in the schema and resolves for name conflicts
 "  Maps a C# qualified type (with scope) to YAML definition (schema) name (not yaml name)
 " Example:
-"  { '$ref': '#/$defs/definitions/'.s:resolvename(a:dsh, i, 'E') }
+"  { '$ref': '#/$defs/definitions/'.s:resolvename(a:dsh, i, '!type:') }
 " Params:
 "  [in/out] dsh: See s:ParseDataFields() and s:map_type()
 "  [in] dd: A list of partials
@@ -1021,20 +1371,24 @@ endfunction
 "  'Content.Client.Actions.Assignments.ActionAssignments' -> 'ActionAssignments'
 function! s:resolvename(dsh, dd, prefix)
 	let name = a:dd[0].n
-	let qname = a:dd[0].s.'.'.name
-	let tryname = a:prefix.name
-	if has_key(a:dsh.ddmap, qname)
-		return a:dsh.ddmap[qname]
+	let qname = a:dd[0].s . '.' . name
+	"let tryname = a:prefix . name
+	if has_key(s:ddmap, qname)
+		return s:ddmap[qname]
 	else
-		" Just use a number to resolve name conflicts
-		let i = 0
-		while has_key(a:dsh.sDefs, tryname)
-			let tryname = a:prefix.name.string(i)
-			let i = i + 1
-		endwhile
-		let a:dsh.ddmap[qname] = tryname
-		call s:builddef(a:dsh, a:dd, tryname)
-		return tryname
+		"" Just use a number to resolve name conflicts
+		" let i = 0
+		" while has_key(a:dsh.sDefs, tryname)
+			" let tryname = a:prefix.name.string(i)
+			" let i = i + 1
+		" endwhile
+		" let s:ddmap[qname] = tryname
+		" call s:builddef(a:dsh, a:dd, tryname)
+		" return tryname
+
+		" Not in ddmap yet, stick on an undefined list for consideration later
+		call add(s:unresolved_on_first_pass, a:dd)
+		return a:prefix . name
 	endif
 endfunction
 
@@ -1043,6 +1397,11 @@ endfunction
 "  [in/out] dsh: See s:ParseDataFields() and s:map_type()
 "  [in] name: yaml schema name of the DataDefinition
 "   e.g. ESeedData (ExplicitDD), ISoundSpecifier (ImplicitDD)
+" TODO: If is in hierarchy, needs parent properties inherited {}, e.g.
+" see instantAction in mech.yml, the IInstantAction built by BuildDef needs
+" id: {}, type:{enum:[instantAction]}
+" But, then problem arries that IInstantAction only works in single case?!?
+" Oh, silly me, I can do type:{}!!!
 function! s:builddef(dsh, dd, name)
 	let def = {
 		\	'type': 'object',
@@ -1109,53 +1468,50 @@ function! s:ParseDataFieldName(partial, df)
 endfunction
 
 function! robusttoolbox#parseCS() abort
-	let tf = b:gutentags_files.ctags
-	let t1 = reltime()
+	let s:tf = b:gutentags_files.ctags
+	let tI = reltime()
+	echom '[robusttoolbox] Parsing usings'
+	let U = s:get_Usings()
+	echom '[robusttoolbox] Parsing interface hierarchy'
+	let in = s:get_Hierarchy()
+	echom '[robusttoolbox] Parsing [Serializable]s'
+	let s = s:get_Serializable()
 	echom '[robusttoolbox] Parsing [Prototype]s'
-	let p = s:get_Prototypes(tf)
+	let p = s:get_Prototypes()
 	echom '[robusttoolbox] Parsing explicit [DataDefinition]s'
-	let e = s:get_ExplicitDataDefinitions(tf)
+	let e = s:get_ExplicitDataDefinitions(p)
 	echom '[robusttoolbox] Parsing implicit [DataDefinition]s'
-	let i = s:get_ImplicitDataDefinitions(tf)
-	let ts1 = reltimestr(reltime(t1))
-	echom '[robusttoolbox] Parsing [Prototype]s completed in '.ts1.' seconds'
+	let i = s:get_ImplicitDataDefinitions(p)
+	let s = s:post_Serializable(s, p, e, i)
+	echom '[robusttoolbox] ['.reltimestr(reltime(tI))[:-5].'s] Parsing [Prototype]s and implicit/explicit [DataDefinition]s completed'
 	" 95.45s with mtables and attribute tags, 7.6x slower than mlines
-	let t2 = reltime()
-	call s:get_DataFields(tf, p, i, e)
-	let ts2 = reltimestr(reltime(t2))
-	echom '[robusttoolbox] Parsing+Processing [DataField]s completed in '.ts2.' seconds'
-	let t2_1 = reltime()
-	call s:get_AbstractDataFields(tf, p)
-	call s:get_ParentDataFields(tf, p)
-	let ts2_1 = reltimestr(reltime(t2_1))
-	echom '[robusttoolbox] Parsing+Processing [AbstractDataField][ParentDataField]s completed in '.ts2_1.' seconds'
-	let t3 = reltime()
-	let G = s:get_Enums(tf)
-	let ts3 = reltimestr(reltime(t3))
-	echom '[robusttoolbox] Parsing enums completed in '.ts3.' seconds'
-	let colors = s:get_Colors(tf)
+	call s:tests({'i':i, 'e':e, 'p':p})
+	call s:get_DataFields(p, i, e)
+	echom '[robusttoolbox] ['.reltimestr(reltime(tI))[:-5].'s] Parsing+Processing [DataField]s completed'
+	call s:get_AbstractDataFields(p)
+	call s:get_ParentDataFields(p)
+	echom '[robusttoolbox] ['.reltimestr(reltime(tI))[:-5].'s] Parsing+Processing [AbstractDataField][ParentDataField]s completed'
+	let G = s:get_Enums()
+	echom '[robusttoolbox] ['.reltimestr(reltime(tI)).'s] Parsing enums completed'
+	let colors = s:get_Colors()
 	"May be faster knowing name rather than querying for all kind:G first
 	" Then kind:E
-	let t4 = reltime()
-	let FF = s:get_FlagsFor(tf, G)
-	let CF = s:get_ConstantsFor(tf, G)
-	let ts4 = reltimestr(reltime(t4))
-	echom '[robusttoolbox] Parsing [FlagsFor]&[ConstantsFor] completed in '.ts4.' seconds'
-	return {'i':i, 'e':e, 'p':p, 'G':G, 'colors':colors, 'FF':FF, 'CF':CF}
+	let FF = s:get_FlagsFor(G)
+	let CF = s:get_ConstantsFor(G)
+	echom '[robusttoolbox] ['.reltimestr(reltime(tI)).'s] Parsing [FlagsFor]&[ConstantsFor] completed'
+	return {'U': U, 'in': in, 's': s, 'i':i, 'e':e, 'p':p, 'G':G, 'colors':colors, 'FF':FF, 'CF':CF}
 endfunction
 
 " Parse YAML prototype ids
 function! robusttoolbox#parseYAML() abort
-	let tf = b:gutentags_files.ctags
-	let t1 = reltime()
-	let yids = s:get_YAMLids(tf)
-	let ts1 = reltimestr(reltime(t1))
-	echom '[robusttoolbox] Parsing YAML prototype ids completed in '.ts1.' seconds'
+	let tI = reltime()
+	let yids = s:get_YAMLids()
+	echom '[robusttoolbox] Parsing YAML prototype ids completed in +'.reltimestr(reltime(tI)).' seconds'
 	return {'yids': yids}
 endfunction
 
-function! robusttoolbox#filtertags(tf, f) abort
-	let ret = systemlist('readtags -t '.a:tf." -eE -Q '".a:f."' -l")
+function! robusttoolbox#filtertags(f) abort
+	let ret = systemlist('readtags -t '.s:tf." -eE -Q '".a:f."' -l")
 	if v:shell_error
 		echohl ErrorMsg
 		echom '[robusttoolbox] readtags error: '.v:shell_error.' filter:'''.a:f.''''
@@ -1164,10 +1520,9 @@ function! robusttoolbox#filtertags(tf, f) abort
 	return ret
 endfunction
 
-function! s:get_YAMLids(tf)
+function! s:get_YAMLids()
 	" Step 1: Query id tags
-	let t = s:splitup_id(robusttoolbox#filtertags(a:tf, '(and $kind (eq? $kind "D")))'))
-	let g:t = t
+	let t = s:splitup_id(robusttoolbox#filtertags('(and $kind (eq? $kind "D")))'))
 	" Step 2: Map into {type: [id, ...]} container
 	" TODO: See if sort quicker:
 	"  sort(t, {i,j -> ((i.t < j.t) == 0) ? -1 : 1})
@@ -1192,17 +1547,20 @@ endfunction
 "  'h' and 'c' key won't exist on structures
 "  'c' key won't exist when no children
 "  'h' key empty when not abstract or sealed
-function! s:get_ImplicitDataDefinitions(tf)
+function! robusttoolbox#get_ImplicitDataDefinitions(p)
+	return s:get_ImplicitDataDefinitions(a:p)
+endfunction
+function! s:get_ImplicitDataDefinitions(p)
 	" Step 1: Query attribute tags
-	let roots = s:splitup_attribute(robusttoolbox#filtertags(a:tf, '(and (#/(\[|,| )ImplicitDataDefinitionForInheritors(,|\])/ $name) $kind (eq? $kind "A")))'))
+	let roots = s:splitup_attribute(robusttoolbox#filtertags('(and (#/(\[|,| )ImplicitDataDefinitionForInheritors(,|\])/ $name) $kind (eq? $kind "A")))'))
 	" Step 2: for each attribute tag: query the class/interface tags
 	" Gets scope-name from attribute of class to match class scope
-	let roots = map(map(roots, {_,j -> robusttoolbox#filtertags(a:tf, '(and (eq? $name "'.j.t.'") $kind (#/(C|I)/ $kind) (eq? $scope-name "'.matchlist(j.s, '\V\(\.\*\).\.\*\$')[1].'"))')}), {_,j -> s:splitup_class_struct(j)})
+	let roots = map(map(roots, {_,j -> robusttoolbox#filtertags('(and (eq? $name "'.j.t.'") $kind (#/(C|I)/ $kind) (eq? $scope-name "'.matchlist(j.s, '\V\(\.\*\).\.\*\$')[1].'"))')}), {_,j -> s:splitup_class_struct(j)})
 	" Step 3: for each class get any child classes recursively
 	"  'c' element only on first element of list of class tag dictionaries
-	call map(roots, {_,j -> map(j, {k,l -> k != 0 ? l : (has_key(l, 'h') && l.h ==# 'sealed' ? l : extend(l, {'c': s:get_Children(a:tf, l.n, j)}))})})
+	call map(roots, {_,j -> map(j, {k,l -> k != 0 ? l : (has_key(l, 'h') && l.h ==# 'sealed' ? l : extend(l, {'c': s:get_Children(l.n, j)}))})})
 	" Step 4: Query ComponentProtoName attributes
-	let compProtoName = s:splitup_attribute(robusttoolbox#filtertags(a:tf, '(and (#/(\[|,| )ComponentProtoName\(/ $name) $kind (eq? $kind "A"))'))
+	let compProtoName = s:splitup_attribute(robusttoolbox#filtertags('(and (#/(\[|,| )ComponentProtoName\(/ $name) $kind (eq? $kind "A"))'))
 	" Step 5: Find component
 	let component = filter(copy(roots), {i,j -> j[0].n ==# 'Component'})[0]
 	" Step 6: Assign each [ComponentProtoName] attribute to their component
@@ -1216,7 +1574,7 @@ function! s:get_ImplicitDataDefinitions(tf)
 		call ScanComponentChildren(component, a)
 	endfor
 	" Step 7: Query RegisterComponent attributes
-	let registerComponent = s:splitup_attribute(robusttoolbox#filtertags(a:tf, '(and (#/(\[|,| )RegisterComponent(,|\])/ $name) $kind (eq? $kind "A"))'))
+	let registerComponent = s:splitup_attribute(robusttoolbox#filtertags('(and (#/(\[|,| )RegisterComponent(,|\])/ $name) $kind (eq? $kind "A"))'))
 	" Step 8: Assign each [RegisterComponent] attribute to their component
 	for a in registerComponent
 		call ScanComponentChildren(component, a)
@@ -1225,16 +1583,186 @@ function! s:get_ImplicitDataDefinitions(tf)
 endfunction
 
 " Gets all [DataDefinition] classes in a list, no children
-function! s:get_ExplicitDataDefinitions(tf)
+function! robusttoolbox#get_ExplicitDataDefinitions(p)
+	return s:get_ExplicitDataDefinitions(a:p)
+endfunction
+function! s:get_ExplicitDataDefinitions(p)
 	" Step 1: Query attribute tags
-	let roots = s:splitup_attribute(robusttoolbox#filtertags(a:tf, '(and (#/(\[|,| )DataDefinition(,|\])/ $name) $kind (eq? $kind "A"))'))
+	let roots = s:splitup_attribute(robusttoolbox#filtertags('(and (#/(\[|,| )DataDefinition(,|\])/ $name) $kind (eq? $kind "A"))'))
 
+	" TODO: Looks like subset of E is failing to parse now, see:
+	" echo map(copy(g:d.e), {i,j->len(j)})
+	" Ok, looks like this is parsing as a property not a struct:
+	"  ['AlarmThresholdSetting
+	"   /home/browser/dev/space-station-14/Content.Shared/Atmos/Monitor/AtmosAlarmThreshold.cs 243;"   kind:P
+	"   scope:class:Content.Shared.Atmos.Monitor.AtmosAlarmThreshold    type:struct     df:']
+	" Ok, there were multiple bugs, the above, enums, and also there is only one
+	" group in this: matchlist(j.s, '\V\(\.\*\).\.\*\$')[2], had to change to [1], weird how it worked much of the time
 	" Step 2: for each attribute tag get the relevant class/struct tags
-	return map(map(roots, {_,j -> robusttoolbox#filtertags(a:tf, '(and (eq? $name "'.j.t.'") $kind (eq? $kind "'.(j.k==#'class'?'C':(j.k==#'struct'?'S':'Undefined')).'") (eq? $scope-name "'.matchlist(j.s, '\V\(\.\*\).\.\*\$')[1].'"))')}), {_,j -> s:splitup_class_struct(j)})
+	let roots = map(map(roots, {_,j -> robusttoolbox#filtertags('(and (eq? $name "'.j.t.'") $kind (eq? $kind "'.(j.k==#'class'?'C':(j.k==#'struct'?'S':'Undefined')).'") (eq? $scope-name "'.matchlist(j.s, '\V\(\.\*\).\.\*\$')[1].'"))')}), {_,j -> s:splitup_class_struct(j)})
 
 	" I could split Step 2 above into two queries: one for each kind!:
-	"return s:splitup_class(robusttoolbox#filtertags(a:tf, '(and $kind (eq? $kind "C") (#/\[(.+, )?DataDefinition(,|\])/ ($"at")))')) +
-	"\ s:splitup_struct(robusttoolbox#filtertags(a:tf, '(and $kind (eq? $kind "S") (#/\[(.+, )?DataDefinition(,|\])/ ($"at")))'))
+	"return s:splitup_class(robusttoolbox#filtertags('(and $kind (eq? $kind "C") (#/\[(.+, )?DataDefinition(,|\])/ ($"at")))')) +
+	"\ s:splitup_struct(robusttoolbox#filtertags('(and $kind (eq? $kind "S") (#/\[(.+, )?DataDefinition(,|\])/ ($"at")))'))
+
+	" Step 3: Filter out prototypes which also have explicit [DataDefinition],
+	" since datafields are put on the prototypes in schema the explicit
+	" datadefinition will have no datafields in schema
+	" See [Prototype ("alertOrder")][DataDefinition] class AlertOrderPrototype,
+	" about 10 of those redundancies in SS14
+	let roots = filter(roots, {_,j -> empty(filter(copy(a:p), {_,k -> k[0].s ==# j[0].s && k[0].n ==# j[0].n}))})
+	return roots
+endfunction
+
+" Gets all usings, by file
+" returns: Dictionary where key is file, and value is a list of usings there
+function! robusttoolbox#get_Usings()
+	return s:get_Prototypes()
+endfunction
+function! s:get_Usings()
+	let tI = reltime()
+	let u = s:splitup_using(robusttoolbox#filtertags('(and $kind (eq? $kind "U"))'))
+	let ret = {}
+	" Tried this as possible speedup, only 0.03s faster, 16.12s->16.09s
+	" let u = sort(u, {l,r->l<#r?-1:(l>#r?1:0)})
+	" let indicies = [0]
+	" for i in range(len(u)-1)
+		" if u[i] !=# u[i+1]
+			" call add(indicies, i)
+		" endif
+	" endfor
+	" call add(indicies, len(u)-1)
+	" for i in range(len(indicies)-1)
+		" let ret[u[indicies[i]].f] = u[indicies[i]:indicies[i+1]]
+	" endfor
+	while !empty(u)
+		let f = u[0].f
+		let ret[f] = filter(copy(u), {_,j -> j.f ==# f})
+		call filter(u, {_,j -> j.f !=# f})
+	endwhile
+	echom '[robusttoolbox] ['.reltimestr(reltime(tI))[:-5].'s] parsing usings completed'
+	return ret
+endfunction
+
+" Gets all interfaces/children in a tree
+"  TODO: Search for serializable?
+" Note not all interfaces implement [ImplicitDataDefinition], in those cases
+" an implementor of the interface implements [ImplicitDataDefinition]
+"  TODO: Handle partials? Helper functions expect partials, and if I am to
+"  link this to existing partials... then this should handle partials.
+function! robusttoolbox#get_Hierarchy()
+	return s:get_Prototypes()
+endfunction
+function! s:get_Hierarchy()
+	let in = s:splitup_class_struct(robusttoolbox#filtertags('(and $kind (eq? $kind "I"))'))
+	" Traverse inherits to build tree
+	let top_level = filter(copy(in), {i,j->empty(j.i) ? 1 : 0})
+	let has_inherits = filter(copy(in), {i,j->empty(j.i) ? 0 : 1})
+	let no = []
+	" Now traverse classes building tree, Can terminate when encounter
+	"  [ExplicitDataDefinition] or [ImplicitDataDefinition]? Or is it useful to
+	"  continue?
+
+	let g:prior_top_level = copy(top_level)
+	" Iterate over inherits
+	for i in has_inherits
+		call s:handle_token(i, i.i, top_level, no)
+	endfor
+	let g:top_level = top_level
+	let g:has_inherits = has_inherits
+	let g:no = no
+	return top_level
+endfunction
+function! s:handle_token(i, str, top_level, no)
+	let Token = {s -> matchlist(s, '\V\[\n\t ,]\*\(\[^,<$]\+\)\[\n ]\*\(\.\*\)\?')}
+	let CleanToken = {s -> matchlist(s, '\V\(\w\+\)\[\n\t ]\*')}
+	let Brak = {s -> matchlist(s, '\V<\(\[^<>]\+\)\(<\.\*\)\?>')}
+	let token = Token(a:str)
+	let remainder = token[2]
+	let template_params = Brak(remainder)
+	if !empty(template_params)
+		" It's a template, use Brak to split the template prams from the remainder of inherits
+		" To get token with template: token.'<'.template_params[1].template_params[2].'>'
+		" But we're dropping template params for convenience...
+		let remainder = template_params[3]
+	endif
+	" Handle token, search top_level
+	" Clean up token, prune suffix:
+	let token = CleanToken(token[1])
+	" 'c' for children on parent, and 'p' for parent on child,
+	" 'c' is array. 'p' is array
+	" If token isn't in top_level, e.g. IEquatable, then nothing changed as no
+	" matches, not in heirachy we care about
+	" Actually, should probably enque it elsewhere for a traversal in the event
+	"  that it isn't in top level, but is a child of that
+	if len(token) < 2
+		echom 'error'.string(a:str)
+	endif
+	call reduce(a:top_level, {_,j -> j.n ==# token[1] ?
+		\ (empty(empty(add(j.c, a:i)) ? add(a:i.p, j) : add(a:i.p, j))
+		\ ? add(a:no, j) : add(a:no, j)) :
+		\ add(a:no, j)}, 0)
+	" Process remainder
+	if !empty(remainder)
+		call s:handle_token(a:i, remainder, a:top_level, a:no)
+	endif
+endfunction
+
+" Gets all [Serializable]s. Emit to schema, then hierachy emitted will have
+" these types to use!
+" Added a few minutes, typescript will really help with parallel execution
+function! robusttoolbox#get_Serializable()
+	return s:get_Serializable()
+endfunction
+function! s:get_Serializable()
+	" Step 1: Query attribute tags
+	let a = s:splitup_attribute(robusttoolbox#filtertags('(and (#/(\[|,| )Serializable(\]|,| )/ $name) $kind (eq? $kind "A") (not (eq? $scope-kind "enumeration")))'))
+
+	" Step 2: For each attribute tag: query for the class|struct tags
+	" Gets scope-name from attribute of class to match class|struct scope
+	let s = map(copy(a), {_,j -> map(robusttoolbox#filtertags('(and (eq? $name "'.j.t.'") $kind (#/(C|S)/ $kind) (eq? $scope-name "'.matchlist(j.s, '\V\(\.\*\).\.\*\$')[1].'"))'), {_1,m -> s:splitup_class_struct_i(m)})})
+	return s
+endfunction
+
+" Filtering after get_Implicit|Explicit, then
+" get the functions and match then to the [Serializer]s, only then can we
+" access the parameter-lists in BuildSerialiable for the schema
+function! robusttoolbox#post_Serializable(s, p, e, i)
+	return s:post_Serializable(a:s, a:p, a:e, a:i)
+endfunction
+function! s:post_Serializable(s, p, e, i)
+	" Step 1: Filter out the [DataDefinition]s, they're serialized with
+	" datafields not ctors
+	"echom '[Serializer]len pre-explicit filter: '.len(a:s)
+	" First filter out [DataDefinition]:
+	let ret = filter(a:s, {_,j -> empty(filter(copy(a:e), {_,k -> k[0].n ==# j[0].n && k[0].s ==# j[0].s}))})
+
+	" Step 2: Filter out the [ImplicitDataDefinition]s, they're serialized with
+	" I think I need to loop over each rather than just recursing into first's
+	" children
+	"let ScanImplicit = {s,i -> i[0].n ==# s[0].n && i[0].s ==# s[0].s ? v:true :
+	"	\ (empty(i[0].c ? v:false : reduce(i[0].c, {t,c->t||ScanImplicit(s, c)}, v:false)))}
+	"echom '[Serializer]len pre-implicit filter: '.len(ret)
+	"call filter(a:s, {_,s -> Scan_Implicit(s, a:i)})
+	let ScanImplicit = {i -> empty(filter(ret, {_,s -> i[0].n !=# s[0].n && i[0].s !=# s[0].n})) ?
+		\ (has_key(i[0], 'c') ? map(copy(i[0].c), {_,c -> ScanImplicit(c)}) : 0) :
+		\ (has_key(i[0], 'c') ? map(copy(i[0].c), {_,c -> ScanImplicit(c)}) : 0)
+		\ }
+	call map(copy(a:i), {_,j -> ScanImplicit(j)})
+
+	"echom '[Serializer]len pre-prototype filter: '.len(ret)
+	" Step 3: Filter out the [Prototype]s, they're serialized with,
+	" TODO: Well, I could generalize this into step 2 if I parsed
+	" [MeansDataDefinition], maybe... but that is on attribute
+	call map(copy(a:p), {_,j -> ScanImplicit(j)})
+	"echom '[Serializer]len post filter: '.len(ret)
+
+	" Step 4: Query the ctors (same name as class/struct)
+	" Just stick all the partials ctors onto the first partial
+	for s in ret
+		let s[0]['H'] = s:splitup_function(robusttoolbox#filtertags('(and (eq? $name "'.s[0].n.'") $kind (eq? $kind "H") (eq? $scope-name "'.s[0].s . '.' . s[0].n.'"))'))
+	endfor
+	return ret
 endfunction
 
 " Gets all [Prototype("...")] classes in a list, no children
@@ -1243,30 +1771,32 @@ endfunction
 " But where to put the prototype parameters like name?
 " Also see: [DataField("name", required=true, serverOnly=true,...)]
 " Store the split up attribute first in sublist? Yes, why not!
-function! s:get_Prototypes(tf)
-	let t1 = reltime()
-	"let p = s:splitup_class(robusttoolbox#filtertags(a:tf, '(and (#/\[(.+, )?Prototype\(\"[[:alpha:]]+\"\)/ ($"at")) $kind (eq? $kind "C"))'))
+function! robusttoolbox#get_Prototypes()
+	return s:get_Prototypes()
+endfunction
+function! s:get_Prototypes()
+	let tI = reltime()
+	"let p = s:splitup_class(robusttoolbox#filtertags('(and (#/\[(.+, )?Prototype\(\"[[:alpha:]]+\"\)/ ($"at")) $kind (eq? $kind "C"))'))
 	" Step 1: Query attribute tags
-	let a = s:splitup_attribute(robusttoolbox#filtertags(a:tf, '(and (#/(\[|,| )Prototype\(\"/ $name) $kind (eq? $kind "A"))'))
+	let a = s:splitup_attribute(robusttoolbox#filtertags('(and (#/(\[|,| )Prototype\(\"/ $name) $kind (eq? $kind "A"))'))
 
 	" Step 2: For each attribute tag: query for the class tags
 	" Gets scope-name from attribute of class to match class scope
-	let p = map(copy(a), {_,j -> map(robusttoolbox#filtertags(a:tf, '(and (eq? $name "'.j.t.'") $kind (eq? $kind "C") (eq? $scope-name "'.matchlist(j.s, '\V\(\.\*\).\.\*\$')[1].'"))'), {_1,m -> s:splitup_class_i(m)})})
+	let p = map(copy(a), {_,j -> map(robusttoolbox#filtertags('(and (eq? $name "'.j.t.'") $kind (eq? $kind "C") (eq? $scope-name "'.matchlist(j.s, '\V\(\.\*\).\.\*\$')[1].'"))'), {_1,m -> s:splitup_class_i(m)})})
 	for i in range(len(p))
 		" Assign the text of the attribute to 'a':
 		let p[i][0].a = a[i].n
 		let p[i][0].yn = matchlist(a[i].n, '\V\.\{-}\%([\|,\| \)Prototype("\(\[^"]\+\)"')[1]
 	endfor
 	"call map(copy(p), {i,j -> execute('let '.j[0].p.' = '.string(a[i]))})})
-	let ts = reltimestr(reltime(t1))
-	echom '[robusttoolbox] Parsing [Prototype]s completed in '.ts.' seconds'
+	echom '[robusttoolbox] Parsing [Prototype]s completed in +'.reltimestr(reltime(tI))[:-5].' seconds'
 	" 14+ seconds on first run, then ~1/3 time afterwards
 	" 5.3 seconds
 	" 5.285 without matchlist()[1:-5] indexing on splitup_class_i
 	" Wil be faster by not modifying list, but adding new dict value
 	" Actually nope, same or .02s slower. copy(p) randomly faster 0.06s.
 	return p
-	"return map(map(p, {_,j -> [j] + robusttoolbox#filtertags(a:tf, '(and (eq? $name "'.j.t.'") $kind (eq? $kind "C") (eq? $scope-name "'.matchlist(j.s, '\V\(\.\*\).\.\*\$')[1].'"))')}), {_,j -> type(j) == v:t_dict ? j : s:splitup_class(j)})
+	"return map(map(p, {_,j -> [j] + robusttoolbox#filtertags('(and (eq? $name "'.j.t.'") $kind (eq? $kind "C") (eq? $scope-name "'.matchlist(j.s, '\V\(\.\*\).\.\*\$')[1].'"))')}), {_,j -> type(j) == v:t_dict ? j : s:splitup_class(j)})
 endfunction
 
 " [ConstantsFor][FlagsFor] attributes are post-processed to include:
@@ -1329,14 +1859,17 @@ endfunction
 let s:matches = 0
 " Checks to see if this df goes into this partial
 "  called by get_DataFields
-function! s:Z3(tf, partial, df)
+function! robusttoolbox#Z3(partial, df)
+	return s:Z3(a:partial, a:df)
+endfunction
+function! s:Z3(partial, df)
 	"let Z3 = {q,j -> q.s.'.'.q.n !=# j.s ? v:false : !empty(add(q.df, j))}
 	if a:partial.f ==# a:df.f && a:partial.s.'.'.a:partial.n ==# a:df.s
 		let s:matches += 1
 		call add(a:partial.df, a:df)
 		" Check to see if we need to lookup symbol
 		if has_key(a:df.a, 'sym')
-			let matches = robusttoolbox#filtertags(a:tf, '(and (eq? $name "'.a:df.a.sym.'") (eq? $scope-name "'.a:df.a.s.'"))')
+			let matches = robusttoolbox#filtertags('(and (eq? $name "'.a:df.a.sym.'") (eq? $scope-name "'.a:df.a.s.'"))')
 			if len(matches) != 1
 				echom 'failure in get_DataFields symbol lookup'
 				return v:true
@@ -1357,9 +1890,9 @@ function! s:Z3(tf, partial, df)
 	return v:false
 endfunction
 
-function! s:get_ForInner(tf, G, forAttrib)
+function! s:get_ForInner(G, forAttrib)
 	" Step 1: Query attribute tags:
-	let a = s:splitup_attribute(robusttoolbox#filtertags(a:tf, '(and (#/(\[|,| )'.a:forAttrib.'\(/ $name) $kind (eq? $kind "A"))'))
+	let a = s:splitup_attribute(robusttoolbox#filtertags('(and (#/(\[|,| )'.a:forAttrib.'\(/ $name) $kind (eq? $kind "A"))'))
 
 	call map(a, {i,j -> s:Splitup_attribute_for(a:forAttrib, j)})
 
@@ -1383,22 +1916,22 @@ function! s:get_ForInner(tf, G, forAttrib)
 	return ret
 endfunction
 
-function! s:get_FlagsFor(tf, G)
-	return s:get_ForInner(a:tf, a:G, 'FlagsFor')
+function! s:get_FlagsFor(G)
+	return s:get_ForInner(a:G, 'FlagsFor')
 endfunction
 
-function! s:get_ConstantsFor(tf, G)
-	return s:get_ForInner(a:tf, a:G, 'ConstantsFor')
+function! s:get_ConstantsFor(G)
+	return s:get_ForInner(a:G, 'ConstantsFor')
 endfunction
 
 " Gets all qualified [DataField] members/properties in a list
 "  p are [Prototype]s, i are implicit [Datadefinition]s, and e explicit
-function! s:get_DataFields(tf, p, i, e)
-	"let m = s:splitup_member(robusttoolbox#filtertags(a:tf, '(and $kind (eq? $kind "M") (#/^\[(.+, )?DataField\(/ ($"at")))'))
-	"let p = s:splitup_property(robusttoolbox#filtertags(a:tf, '(and $kind (eq? $kind "P") (#/^\[(.+, )?DataField\(/ ($"at")))'))
-	let t1 = reltime()
+function! s:get_DataFields(p, i, e)
+	"let m = s:splitup_member(robusttoolbox#filtertags('(and $kind (eq? $kind "M") (#/^\[(.+, )?DataField\(/ ($"at")))'))
+	"let p = s:splitup_property(robusttoolbox#filtertags('(and $kind (eq? $kind "P") (#/^\[(.+, )?DataField\(/ ($"at")))'))
+	let tI = reltime()
 	" Step 1: Query attribute tags:
-	let a = s:splitup_attribute(robusttoolbox#filtertags(a:tf, '(and (#/(\[|,| )DataField\(/ $name) $kind (eq? $kind "A"))'))
+	let a = s:splitup_attribute(robusttoolbox#filtertags('(and (#/(\[|,| )DataField\(/ $name) $kind (eq? $kind "A"))'))
 
 	call map(a, {i,j -> s:Splitup_attribute_datafield(j)})
 
@@ -1414,9 +1947,9 @@ function! s:get_DataFields(tf, p, i, e)
 	"  element of container sublist. New element being a list of
 	"  [DataField] tags, and somehow store attribute on that tag dict.
 	" SLOWWW:
-	"let t = map(copy(a), {_,j -> map(robusttoolbox#filtertags(a:tf, '(and (eq? $name "'.j.t.'") (eq? $scope-name "'.j.s.'"))'), {_1,m -> s:splitup_member_property_i(m)})})
+	"let t = map(copy(a), {_,j -> map(robusttoolbox#filtertags('(and (eq? $name "'.j.t.'") (eq? $scope-name "'.j.s.'"))'), {_1,m -> s:splitup_member_property_i(m)})})
 	" TODO: Alternate of above, test for better time, also no sublist:
-	let t = map(copy(a), {_,j -> s:splitup_member_property_i(robusttoolbox#filtertags(a:tf, '(and (eq? $name "'.j.t.'") (eq? $scope-name "'.j.s.'"))')[0])})
+	let t = map(copy(a), {_,j -> s:splitup_member_property_i(robusttoolbox#filtertags('(and (eq? $name "'.j.t.'") (eq? $scope-name "'.j.s.'"))')[0])})
 	"for i in range(len(t))
 	""	let t[i] = t[i][0]
 	"	let t[i].a = a[i].n
@@ -1426,11 +1959,9 @@ function! s:get_DataFields(tf, p, i, e)
 	call map(t, {i,j -> extend(j, {'a': a[i]})})
 	let g:t = t
 
-	let ts1 = reltimestr(reltime(t1))
-	echom '[robusttoolbox] Parsing [DataField]s completed in '.ts1.' seconds'
+	echom '[robusttoolbox] Parsing [DataField]s completed in +'.reltimestr(reltime(tI))[:-5].' seconds'
 	" 167.9s
 
-	let t2 = reltime()
 	" Step 3: Store [DataField] tags on prototypes and datadefinitions
 	" KLUDGE: filtered out scope info on [DataField] tag, might need later
 	" TODO: Need to add scope back to [DataField] attribs to find partials?
@@ -1450,12 +1981,12 @@ function! s:get_DataFields(tf, p, i, e)
 	echom '[robusttoolbox] len attribs before prototypes: '.len(t)
 	"call map(copy(t), {_,j -> map(copy(a:p), {_1,m -> Z2(m[0],j)})})
 	"For filter (see if faster):
-	call filter(t, {_,j -> !len(filter(copy(a:p), {_1,e -> len(filter(copy(e), {_2,p -> s:Z3(a:tf,p,j)}))}))})
+	call filter(t, {_,j -> !len(filter(copy(a:p), {_1,e -> len(filter(copy(e), {_2,p -> s:Z3(p,j)}))}))})
 	echom '[robusttoolbox] len attribs after prototypes: '.len(t)
 	echom '[robusttoolbox] s:matches after prototypes: '.s:matches
 
 	"call map(copy(t), {_,j -> map(copy(a:e), {_1,m -> map(copy(m), {_2,o -> Z(o,j)})})})
-	call filter(t, {_,j -> !len(filter(copy(a:e), {_1,e -> len(filter(copy(e), {_2,p -> s:Z3(a:tf,p,j)}))}))})
+	call filter(t, {_,j -> !len(filter(copy(a:e), {_1,e -> len(filter(copy(e), {_2,p -> s:Z3(p,j)}))}))})
 	echom '[robusttoolbox] len attribs after explicits: '.len(t)
 	echom '[robusttoolbox] s:matches after explicits: '.s:matches
 
@@ -1470,13 +2001,13 @@ function! s:get_DataFields(tf, p, i, e)
 	" Alternate (no memcopy):
 	"let R2 = {o,j -> map(o, {_,n -> map(n, {_1,m -> empty(has_key(m,'c') ? R2(m.c, j) : []) ? Z2(m, j) : Z2(m, j)})})}
 	" Alternate (filter, see if better than 203s Parse+Process):
-	let R3 = {o,j -> len(filter(copy(o), {_,i -> len(filter(copy(i), {_1,p -> !empty(has_key(p,'c') ? R3(p.c, j) : v:false) || s:Z3(a:tf,p,j)}))}))}
-	call filter(t, {_,j -> !R3(a:i, j)})
+	let s:R3 = {o,j -> len(filter(copy(o), {_,i -> len(filter(copy(i), {_1,p -> !empty((has_key(p,'c') && !empty(p.c)) ? s:R3(p.c, j) : v:false) || s:Z3(p,j)}))}))}
+	let g:t = deepcopy(t)
+	call filter(t, {_,j -> !s:R3(a:i, j)})
 	echom '[robusttoolbox] len attribs after implicits: '.len(t)
 	echom '[robusttoolbox] s:matches after implicits: '.s:matches
 
-	let ts2 = reltimestr(reltime(t2))
-	echom '[robusttoolbox] Processing [DataField]s completed in '.ts2.' seconds'
+	echom '[robusttoolbox] Processing [DataField]s completed in +'.reltimestr(reltime(tI))[:-5].' seconds'
 	" 6.84s only p,e, encoding flux
 	" 5.2s only p,e, encoding flux
 	" 6.0s only p,e, encoding flux, with Z lambda
@@ -1488,9 +2019,9 @@ function! s:get_DataFields(tf, p, i, e)
 endfunction
 
 
-function! s:get_AbstractDataFields(tf, p)
+function! s:get_AbstractDataFields(p)
 	" Step 1: Query attribute tags:
-	let a = s:splitup_attribute(robusttoolbox#filtertags(a:tf, '(and (#/(\[|,| )AbstractDataField(Attribute)?(\]|,)/ $name) $kind (eq? $kind "A"))'))
+	let a = s:splitup_attribute(robusttoolbox#filtertags('(and (#/(\[|,| )AbstractDataField(Attribute)?(\]|,)/ $name) $kind (eq? $kind "A"))'))
 
 	" [AbstractDataField] has Name of 'abstract' in ctor
 	call map(a, {i,j -> extend(j, {'nn': 'abstract'})})
@@ -1499,7 +2030,7 @@ function! s:get_AbstractDataFields(tf, p)
 	" Gets scope-name from attribute of M/P tag to determine container
 	" container scope, appears to only be in:
 	"  The Prototype sublist, the attribute/scope element
-	let t = map(copy(a), {_,j -> s:splitup_member_property_i(robusttoolbox#filtertags(a:tf, '(and (eq? $name "'.j.t.'") (eq? $scope-name "'.j.s.'"))')[0])})
+	let t = map(copy(a), {_,j -> s:splitup_member_property_i(robusttoolbox#filtertags('(and (eq? $name "'.j.t.'") (eq? $scope-name "'.j.s.'"))')[0])})
 	call map(t, {i,j -> extend(j, {'a': a[i]})})
 
 	" Step 3: For each member/property tag, put on attribute
@@ -1508,13 +2039,13 @@ function! s:get_AbstractDataFields(tf, p)
 	"  for now put all [DataField]s on first partial
 	" TODO: I now do all partials, fix change effects
 	"echom '[robusttoolbox] len [AbstractDataField] before prototypes: '.len(t)
-	call filter(t, {_,j -> !len(filter(copy(a:p), {_1,e -> len(filter(copy(e), {_2,p -> s:Z3(a:tf,p,j)}))}))})
+	call filter(t, {_,j -> !len(filter(copy(a:p), {_1,e -> len(filter(copy(e), {_2,p -> s:Z3(p,j)}))}))})
 	"echom '[robusttoolbox] len [AbstractDataField] after prototypes: '.len(t)
 endfunction
 
-function! s:get_ParentDataFields(tf, p)
+function! s:get_ParentDataFields(p)
 	" Step 1: Query attribute tags:
-	let a = s:splitup_attribute(robusttoolbox#filtertags(a:tf, '(and (#/(\[|,| )ParentDataField(Attribute)?\(/ $name) $kind (eq? $kind "A"))'))
+	let a = s:splitup_attribute(robusttoolbox#filtertags('(and (#/(\[|,| )ParentDataField(Attribute)?\(/ $name) $kind (eq? $kind "A"))'))
 
 	" [ParentDataField] has Name of 'parent' in ctor
 	call map(a, {i,j -> s:Splitup_attribute_parentdatafield(j)})
@@ -1523,7 +2054,7 @@ function! s:get_ParentDataFields(tf, p)
 	" Gets scope-name from attribute of M/P tag to determine container
 	" container scope, appears to only be in:
 	"  The Prototype sublist, the attribute/scope element
-	let t = map(copy(a), {_,j -> s:splitup_member_property_i(robusttoolbox#filtertags(a:tf, '(and (eq? $name "'.j.t.'") (eq? $scope-name "'.j.s.'"))')[0])})
+	let t = map(copy(a), {_,j -> s:splitup_member_property_i(robusttoolbox#filtertags('(and (eq? $name "'.j.t.'") (eq? $scope-name "'.j.s.'"))')[0])})
 	call map(t, {i,j -> extend(j, {'a': a[i]})})
 
 	" Step 3: For each member/property tag, put on attribute
@@ -1532,7 +2063,7 @@ function! s:get_ParentDataFields(tf, p)
 	"  for now put all [DataField]s on first partial
 	" TODO: I now do all partials, fix change effects
 	"echom '[robusttoolbox] len [ParentDataField] before prototypes: '.len(t)
-	call filter(t, {_,j -> !len(filter(copy(a:p), {_1,e -> len(filter(copy(e), {_2,p -> s:Z3(a:tf,p,j)}))}))})
+	call filter(t, {_,j -> !len(filter(copy(a:p), {_1,e -> len(filter(copy(e), {_2,p -> s:Z3(p,j)}))}))})
 	"echom '[robusttoolbox] len [ParentDataField] after prototypes: '.len(t)
 endfunction
 
@@ -1541,78 +2072,116 @@ endfunction
 "  List of enums: {n:name, k:scope-kind, s:scope-name, [t:typename], e:[enumerators]}
 "   typename: e.g. 'sbyte' in 'enum VentPipeDirection : sbyte'
 "   enumerators: {n:name, v:value}
-function! s:get_Enums(tf)
+function! s:get_Enums()
 	" Step 1: Query attribute tags
 	" EDIT: Actually, see SpeciesSkinColor, no attribute but is used
-	"let roots = s:splitup_attribute(robusttoolbox#filtertags(a:tf, '(and (#/(\[|,| )Serializable(,|\])/ $name) $kind (eq? $kind "A") (eq? $scope-kind "enumeration"))'))
+	"let roots = s:splitup_attribute(robusttoolbox#filtertags('(and (#/(\[|,| )Serializable(,|\])/ $name) $kind (eq? $kind "A") (eq? $scope-kind "enumeration"))'))
 
 	" Step 2: for each attribute tag: query the enum tags
 	" Gets scope-name from attribute of class to match class scope
 	" There will never be same-named item in same scope, no partials!
-	"call map(roots, {_,j -> s:splitup_enum_i(robusttoolbox#filtertags(a:tf, '(and (eq? $name "'.j.t.'") $kind (eq? $kind "G") (eq? $scope-name "'.matchlist(j.s, '\V\(\.\*\).\.\*\$')[1].'"))')[0])})
+	"call map(roots, {_,j -> s:splitup_enum_i(robusttoolbox#filtertags('(and (eq? $name "'.j.t.'") $kind (eq? $kind "G") (eq? $scope-name "'.matchlist(j.s, '\V\(\.\*\).\.\*\$')[1].'"))')[0])})
 
 	" Step 1: Get enum tags
-	let roots =  map(robusttoolbox#filtertags(a:tf, '(and $kind (eq? $kind "G"))'), {i,j -> s:splitup_enum_i(j)})
+	let roots =  map(robusttoolbox#filtertags('(and $kind (eq? $kind "G"))'), {i,j -> s:splitup_enum_i(j)})
 
 	" Step 3 (now 2): for each enum get every enumerator
-	call map(copy(roots), {_,j -> extend(j.e, map(robusttoolbox#filtertags(a:tf, '(and $kind (eq? $kind "E") (eq? $scope-name "'.j.s.'.'.j.n.'"))'), {_1,l -> s:splitup_enumerator_i(l)}))})
+	call map(copy(roots), {_,j -> extend(j.e, map(robusttoolbox#filtertags('(and $kind (eq? $kind "E") (eq? $scope-name "'.j.s.'.'.j.n.'"))'), {_1,l -> s:splitup_enumerator_i(l)}))})
 
 	return roots
 endfunction
 
-function! s:get_Colors(tf)
-	return s:splitup_member(robusttoolbox#filtertags(a:tf, '(and $kind (eq? $kind "M") (eq? $scope-name "Robust.Shared.Maths.Color") (eq? ($"type") "Color"))'))
+function! s:get_Colors()
+	return s:splitup_member(robusttoolbox#filtertags('(and $kind (eq? $kind "M") (eq? $scope-name "Robust.Shared.Maths.Color") (eq? ($"type") "Color"))'))
 endfunction
 
 " For kind:D puts into {n:name, f:file, t:typename}
 function! s:splitup_id(list)
-	return map(map(a:list, {_,j -> matchlist(j, '\V\(\[^\t]\+\)\t\(\[^\t]\+\)\t\[^\t]\+\tkind:D\ttyperef:typename:\(\[^\t]\+\)')}), {_,j -> {'n': j[1], 'f': j[2], 't': j[3]}})
+	return map(map(a:list, {_,j -> matchlist(j, '\V\(\[^\t]\+\)\t\(\[^\t]\+\)\t\[^\t]\+\tkind:D\ttyperef:typename:\(\[^\t]\+\)\$')}), {_,j -> {'n': j[1], 'f': j[2], 't': j[3]}})
 endfunction
 
 " TODO: Might not need f:file on this?
 " For kind:A puts into {n:name, k:scope-kind, s:scope-name, t:typename}
+function! robusttoolbox#splitup_attribute(list)
+	return s:splitup_attribute(a:list)
+endfunction
 function! s:splitup_attribute(list)
 	" Is Extended Posix Regex, so can't match nested parens IIRC
 	"  Appears to be no performance benefit of not capturing groups
 	" For Class attributes should prune suffix of scope-name after this call
 	" For Class members should leave scope-name as-is
-	return map(map(a:list, {_,j -> matchlist(j, '\V\(\[^\t]\+\)\t\[^\t]\+\t\[^\t]\+\tkind:A\tscope:\(\[^:]\+\):\(\[^\t]\+\)\ttyperef:typename:\(\[^\t]\+\)')}), {_,j -> {'n': j[1], 'k': j[2], 's': j[3], 't': j[4]}})
+	" TODO: See if obtaining file and querying against that gives a speedup
+	return map(map(a:list, {_,j -> matchlist(j, '\V\(\[^\t]\+\)\t\[^\t]\+\t\[^\t]\+\tkind:A\tscope:\(\[^:]\+\):\(\[^\t]\+\)\ttyperef:typename:\(\[^\t]\+\)\$')}), {_,j -> {'n': j[1], 'k': j[2], 's': j[3], 't': j[4]}})
+endfunction
+
+" For kind:U puts into {n:name, f:file}
+function! s:splitup_using(list)
+	return map(map(a:list, {_,j -> matchlist(j, '\V\(\[^\t]\+\)\t\(\[^\t]\+\)\t\[^\t]\+\tkind:U\$')}), {_,j -> {'n': j[1], 'f': j[2]}})
 endfunction
 
 " For kind:C puts into {n:name, f:file, t:langtype, k:scope-kind, s:scope-name, i:inherits, h:[sealed|abstract], df:datafields, a:attributes}
 " Operates on a list of list of strings
 function! s:splitup_class(list)
-	return map(map(a:list, {_,j -> matchlist(j, '\V\(\[^\t]\+\)\t\(\[^\t]\+\)\t\[^\t]\+\tkind:C\tscope:\(\[^:]\+\):\(\[^\t]\+\)\tinherits:(\(\[^)]\*\))\tsl:\(\.\*\)\$')}), {_,j -> {'n': j[1], 'f':j[2], 't': 'C', 'k': j[3], 's': j[4], 'i': j[5], 'h': j[6], 'df': [], 'a': []}})
+	return map(map(a:list, {_,j -> matchlist(j, '\V\(\[^\t]\+\)\t\(\[^\t]\+\)\t\[^\t]\+\tkind:C\tscope:\(\[^:]\+\):\(\[^\t]\+\)\tinherits:(\(\[^\t]\*\))\%(\tpl:(\(\[^\t]\*\))\)\?\tsl:\(\.\*\)\$')}), {_,j -> {'n': j[1], 'f':j[2], 't': 'C', 'k': j[3], 's': j[4], 'i': j[5], 'pl': j[6], 'h': j[7], 'df': [], 'a': []}})
 endfunction
 
 " Same as splitup_class but for single string
 function! s:splitup_class_i(str)
-	let j = matchlist(a:str, '\V\(\[^\t]\+\)\t\(\[^\t]\+\)\t\[^\t]\+\tkind:C\tscope:\(\[^:]\+\):\(\[^\t]\+\)\tinherits:(\(\[^)]\*\))\tsl:\(\.\*\)\$')
-	return {'n': j[1], 'f': j[2], 't': 'C', 'k': j[3], 's': j[4], 'i': j[5], 'h': j[6], 'df': [], 'a': []}
+	let j = matchlist(a:str, '\V\(\[^\t]\+\)\t\(\[^\t]\+\)\t\[^\t]\+\tkind:C\tscope:\(\[^:]\+\):\(\[^\t]\+\)\tinherits:(\(\[^\t]\*\))\%(\tpl:(\(\[^\t]\*\))\)\?\tsl:\(\.\*\)\$')
+	return {'n': j[1], 'f': j[2], 't': 'C', 'k': j[3], 's': j[4], 'i': j[5], 'pl': j[6], 'h': j[7], 'df': [], 'a': []}
 endfunction
 
 " For kind:S puts into {n:name, f:file, t:langtype, k:scope-kind, s:scope-name, i:inherits, df:datafields, a:attributes}
 function! s:splitup_struct(list)
-	return map(map(a:list, {_,j -> matchlist(j, '\V\(\[^\t]\+\)\t\(\[^\t]\+\)\t\[^\t]\+\tkind:S\tscope:\(\[^:]\+\):\(\[^\t]\+\)\tinherits:(\(\[^)]\*\))\$')}), {_,j -> {'n': j[1], 'f': j[2], 't': 'S', 'k': j[3], 's': j[4], 'i': j[5], 'df': [], 'a': []}})
+	return map(map(a:list, {_,j -> matchlist(j, '\V\(\[^\t]\+\)\t\(\[^\t]\+\)\t\[^\t]\+\tkind:S\tscope:\(\[^:]\+\):\(\[^\t]\+\)\tinherits:(\(\[^\t]\*\))\%(\tpl:(\(\[^\t]\*\))\)\?\$')}), {_,j -> {'n': j[1], 'f': j[2], 't': 'S', 'k': j[3], 's': j[4], 'i': j[5], 'pl': j[6], 'df': [], 'a': []}})
 endfunction
 
 " For kind:C|S|I combo queries, slower than one
 " Suitable for when an attribute applies to either, perhaps
 " Should benchmark to see if separating first is faster
 " Had to modify sl: capture to be optional to catch both struct and class
+function! robusttoolbox#splitup_class_struct(list)
+	return s:splitup_class_struct(a:list)
+endfunction
 function! s:splitup_class_struct(list)
-	return map(map(a:list, {_,j -> matchlist(j, '\V\(\[^\t]\+\)\t\(\[^\t]\+\)\t\[^\t]\+\tkind:\(\[CSI]\)\tscope:\(\[^:]\+\):\(\[^\t]\+\)\tinherits:(\(\[^)]\*\))\%(\tsl:\(\[^$]\*\)\)\?\$')}), {_,j -> (j[3] ==# 'C' ? {'n': j[1], 'f': j[2], 't': j[3], 'k': j[4], 's': j[5], 'i': j[6], 'h': j[7], 'df': [], 'a': []} : {'n': j[1], 'f': j[2], 't': j[3], 'k': j[4], 's': j[5], 'i': j[6], 'df': [], 'a': []})})
+	try
+		" Most efficient without for loop... but prone to bad underlying code
+		return map(map(copy(a:list), {_,j -> matchlist(j, '\V\(\[^\t]\+\)\t\(\[^\t]\+\)\t\[^\t]\+\tkind:\(\[CSI]\)\tscope:\(\[^:]\+\):\(\[^\t]\+\)\tinherits:(\(\[^\t]\*\))\%(\tpl:(\(\[^\t]\*\))\)\?\%(\tsl:\(\[^$]\*\)\)\?\$')}), {_,j -> (j[3] ==# 'C' ? {'n': j[1], 'f': j[2], 't': j[3], 'k': j[4], 's': j[5], 'i': j[6], 'pl': j[7], 'h': j[8], 'df': [], 'a': [], 'p': [], 'c': []} : {'n': j[1], 'f': j[2], 't': j[3], 'k': j[4], 's': j[5], 'i': j[6], 'pl': j[7], 'df': [], 'a': [], 'p': [], 'c': []})})
+	catch
+		"let foo = map(a:list, {_,j -> matchlist(j, '\V\(\[^\t]\+\)\t\(\[^\t]\+\)\t\[^\t]\+\tkind:\(\[CSI]\)\tscope:\(\[^:]\+\):\(\[^\t]\+\)\tinherits:(\(\[^)]\*\))\%(\tsl:\(\[^$]\*\)\)\?\$')})
+		let foo = copy(a:list)
+		for j in range(len(foo))
+			" Changed inherits from ^) to ^\t termination, I think it works, also
+			" changed in splitup_class_struct_i, TODO: change elsewhere
+			"let k = matchlist(a:list[j], '\V\(\[^\t]\+\)\t\(\[^\t]\+\)\t\[^\t]\+\tkind:\(\[CSI]\)\tscope:\(\[^:]\+\):\(\[^\t]\+\)\tinherits:(\(\[^)]\*\))\%(\tsl:\(\[^$]\*\)\)\?\$')
+			let k = matchlist(a:list[j], '\V\(\[^\t]\+\)\t\(\[^\t]\+\)\t\[^\t]\+\tkind:\(\[CSI]\)\tscope:\(\[^:]\+\):\(\[^\t]\+\)\tinherits:(\(\[^\t]\*\))\%(\tpl:(\(\[^\t]\*\))\)\?\%(\tsl:\(\[^$]\*\)\)\?\$')
+			if len(k) < 3
+				" Ok the problem is the inherits contains a couple new() new() which
+				" throws off the inherits: group termination, and extended posix regex
+				" can't handle nested parentheses...
+				" The following is bad:ComponentTreeSystem<TTreeComp,TComp>^I/home/browser/dev/space-station-14/RobustToolbox/Robust.Shared/ComponentTrees/ComponentTreeSystem.cs^I18;"^Ikind:C^Iscope:namespace:Robust.Shared.ComponentTrees^Iinherits:(EntitySystem\nwhere TTreeComp : Component, IComponentTreeComponent<TComp>, new()\nwhere TComp : Component, IComponentTreeEntry<TComp>, neW()\N)^iSL:ABSTRACt with result dict:[]"
+				echom 'The following failed to match in splitup_class_struct:'.a:list[j].' with result dict:'.string(k)
+			endif
+			let foo[j] = k
+		endfor
+		return map(foo, {_,j -> (j[3] ==# 'C' ? {'n': j[1], 'f': j[2], 't': j[3], 'k': j[4], 's': j[5], 'i': j[6], 'pl': j[7], 'h': j[8], 'df': [], 'a': []} : {'n': j[1], 'f': j[2], 't': j[3], 'k': j[4], 's': j[5], 'i': j[6], 'pl': j[7], 'df': [], 'a': []})})
+	endtry
 endfunction
 
 " Same as splitup_class_struct but for single string
 function! s:splitup_class_struct_i(str)
-	let j = matchlist(a:str, '\V\(\[^\t]\+\)\t\(\[^\t]\+\)\t\[^\t]\+\tkind:\(\[CSI]\)\tscope:\(\[^:]\+\):\(\[^\t]\+\)\tinherits:(\(\[^)]\*\))\%(\tsl:\(\[^$]\*\)\)\?\$')
-	return j[3] ==# 'C' ? {'n': j[1], 'f': j[2], 't': j[3], 'k': j[4], 's': j[5], 'i': j[6], 'h': j[7], 'df': [], 'a': []} : {'n': j[1], 'f': j[2], 't': j[3], 'k': j[4], 's': j[5], 'i': j[6], 'df': [], 'a': []}
+	let j = matchlist(a:str, '\V\(\[^\t]\+\)\t\(\[^\t]\+\)\t\[^\t]\+\tkind:\(\[CSI]\)\tscope:\(\[^:]\+\):\(\[^\t]\+\)\tinherits:(\(\[^\t]\*\))\%(\tpl:(\(\[^\t]\*\))\)\?\%(\tsl:\(\[^$]\*\)\)\?\$')
+	return j[3] ==# 'C' ? {'n': j[1], 'f': j[2], 't': j[3], 'k': j[4], 's': j[5], 'i': j[6], 'pl': j[7], 'h': j[8], 'df': [], 'a': [], 'p': [], 'c': []} : {'n': j[1], 'f': j[2], 't': j[3], 'k': j[4], 's': j[5], 'i': j[6], 'pl': j[7], 'df': [], 'a': [], 'p': [], 'c': []}
 endfunction
 
 " For kind:M puts into {n:name, f:file, k:scope-kind, s:scope-name, t:type, d:default}
 function! s:splitup_member(list)
-	return map(map(a:list, {_,j -> matchlist(j, '\V\(\w\+\)\t\[^\t]\+\t\[^\t]\+\tkind:M\tscope:\(\[^:]\+\):\(\[^\t]\+\)\ttype:\(\[^\t]\+\)\tdf:\(\.\*\)\$')}), {_,j -> {'n': j[1], 'k': j[2], 's': j[3], 't': j[4], 'd': j[5]}})
+	return map(map(a:list, {_,j -> matchlist(j, '\V\(\w\+\)\t\(\[^\t]\+\)\t\[^\t]\+\tkind:M\tscope:\(\[^:]\+\):\(\[^\t]\+\)\ttype:\(\[^\t]\+\)\tdf:\(\.\*\)\$')}), {_,j -> {'n': j[1], 'f': j[2], 'k': j[3], 's': j[4], 't': j[5], 'd': j[6]}})
+endfunction
+
+" For kind:H puts into {n:name, f:file, k:scope-kind, s:scope-name, pl:parameter-list}
+function! s:splitup_function(list)
+	return map(map(a:list, {_,j -> matchlist(j, '\V\(\w\+\)\t\(\[^\t]\+\)\t\[^\t]\+\tkind:H\tscope:\(\[^:]\+\):\(\[^\t]\+\)\tpl:\(\.\*\)\$')}), {_,j -> {'n': j[1], 'f': j[2], 'k': j[3], 's': j[4], 'pl': j[5]}})
 endfunction
 
 " For kind:P puts into {n:name, k:scope-kind, s:scope-name, t:type, d:default}
@@ -1632,8 +2201,8 @@ endfunction
 "  typename in tag only іf enum type specified,
 "  e.g. 'enum VentPumpDirection : sbyte'
 function! s:splitup_enum_i(str)
-	let j = matchlist(a:str, '\V\(\w\+\)\t\[^\t]\+\t\[^\t]\+\tkind:G\tscope:\(\[^:]\+\):\(\[^\t]\+\)\%(\ttyperef:typename:\(\[^\t]\+\)\)\?\$')
-	return {'n': j[1], 'k': j[2], 's': j[3], 't': j[4], 'e': []}
+	let j = matchlist(a:str, '\V\(\w\+\)\t\(\[^\t]\+\)\t\[^\t]\+\tkind:G\tscope:\(\[^:]\+\):\(\[^\t]\+\)\%(\ttyperef:typename:\(\[^\t]\+\)\)\?\$')
+	return {'n': j[1], 'f': j[2], 'k': j[3], 's': j[4], 't': j[5], 'e': []}
 endfunction
 
 " For kind:E puts into {n:name, v:value}
@@ -1645,64 +2214,93 @@ function! s:splitup_enumerator_i(str)
 	return {'n': j[1], 'v': j[2]}
 endfunction
 
+
 " Params:
 "  [in] tag: parent name
 "  [in] pdd: parent partial list
-function! s:get_Children(tf, tag, pdd)
+function! robusttoolbox#get_Children(tag, pdd)
+	call s:get_Children(a:tag, a:pdd)
+endfunction
+function! s:get_Children(tag, pdd)
 	let parent = a:tag
 	" Check for template parameters and replace with '<[^>]+>'
-	"  TODO: Recursive... to handle nested angle brackets? and more params
 	let Token = {s -> matchlist(s, '\V\(\[^<>]\+\)\(\.\*\)\?')}
 	let m = Token(parent)
 	if !empty(m[2])
+		" TODO: Recursive... to handle nested angle brackets? and more params
+		"  Could maybe handle nesting with a terminator seen in inherits, e.g. [\n,$ ]
+		"  Seems terminator used properly in subequent queries, so, could validate
+		"  readtags behaves as expected
 		let parent = m[1].'<[^<]+>'
 		"echom 'had a template parent: '.parent
 	endif
 
 	" Query for everything not in Client, later we'll merge in Client
 	" TODO: IDK if pdd may have more than one scope... e.g. Client/Server
-	let children = s:splitup_class_struct(robusttoolbox#filtertags(a:tf, '(and $kind (#/(C|I)/ $kind) (#/(^\(|,| )('.escape(a:pdd[0].s, '.').'\.)?'.parent.'( |,|\n|\)$)/ $inherits) (not (#/^(Content|Robust)\.Client/ $scope-name)))'))
+	let children = s:splitup_class_struct(robusttoolbox#filtertags('(and $kind (#/(C|I)/ $kind) (#/(^\(|,| )('.escape(a:pdd[0].s, '.').'\.)?'.parent.'( |,|\n|\)$)/ $inherits) (not (#/^(Content|Robust)\.Client/ $scope-name)))'))
 
 	" For each child query all class/interface tag instances (i.e. partial)
 	" as only one will have the $inherits populated which we queried above
 	" Setting 'p' to a:pdd may make for an infinіte loop on printing
 	"  Nope! Doesn't go down that rabbit hole and prints as [...]
-	call map(children, {_,j -> map(robusttoolbox#filtertags(a:tf, '(and (eq? $name "'.j.n.'") $kind (#/(C|I)/ $kind) (eq? $scope "'.j.k.':'.j.s.'"))'), {_,k -> extend(s:splitup_class_struct_i(k), {'p': a:pdd})})})
+	call map(children, {_,j -> map(robusttoolbox#filtertags('(and (eq? $name "'.j.n.'") $kind (#/(C|I)/ $kind) (eq? $scope "'.j.k.':'.j.s.'"))'), {_,k -> extend(s:splitup_class_struct_i(k), {'p': a:pdd})})})
 	" List processing is slow sadly :(
 
 	" Now we get children in client, and later merge into server
 	"  This list should include some Components, and MobStates
-	let clientChildren = s:splitup_class_struct(robusttoolbox#filtertags(a:tf, '(and $kind (#/(C|I)/ $kind) (#/(^\(|,| )('.escape(a:pdd[0].s, '.').'\.)?'.parent.'( |,|\n|\)$)/ $inherits) (#/^(Content|Robust)\.Client/ $scope-name))'))
+	let clientChildren = s:splitup_class_struct(robusttoolbox#filtertags('(and $kind (#/(C|I)/ $kind) (#/(^\(|,| )('.escape(a:pdd[0].s, '.').'\.)?'.parent.'( |,|\n|\)$)/ $inherits) (#/^(Content|Robust)\.Client/ $scope-name))'))
 
-" For each child query all class/interface tag instances (i.e. partial)
+	" For each child query all class/interface tag instances (i.e. partial)
 	"  as only one will have the $inherits populated which we have now
-	call map(clientChildren, {_,j -> map(robusttoolbox#filtertags(a:tf, '(and (eq? $name "'.j.n.'") $kind (#/(C|I)/ $kind) (eq? $scope "'.j.k.':'.j.s.'"))'), {_,k -> extend(s:splitup_class_struct_i(k), {'p': a:pdd})})})
-	for c in clientChildren
-		" Match should be a list of a list of partials, but outer len==1
-		let match = filter(copy(children), {_,j -> j[0].n ==# c[0].n})
-		if len(match) > 1
-			echom 'anomaly in get_Children, more than one sibling match, parent: '.parent.' child: '.c[0].n
-		elseif len(match) == 0
-			" No shared/server partials to merge client partials to
-			" Put them into children
-			call add(children, c)
-		elseif len(match) == 1
-			" Must merge the client partials to the shared/server partials
-			let dd = match[0]
-			if dd[0].h !=# 'sealed' || c[0].h !=# 'sealed'
-				echom 'anomaly in get_Children, Client/Server merge class unsealed, Client children will not be parsed, server:'.match[0][0].n. ' client:'.c[0].n
-				" Looks like ItemComponent isn't sealed... I may have to do
-				"  this algorithm differently then
-				" ItemComponent has both Client/Server classes, and each have
-				"  a child class 'ClothingComponent'. Oh looks like this was
-				"  fixed in master... need to update
-			endif
-			" Just add the partials together, the [DataField]s will merge
-			"  This works since these classes have no children
-			call extend(dd, c)
-		endif
-	endfor
+	call map(clientChildren, {_,j -> map(robusttoolbox#filtertags('(and (eq? $name "'.j.n.'") $kind (#/(C|I)/ $kind) (eq? $scope "'.j.k.':'.j.s.'"))'), {_,k -> extend(s:splitup_class_struct_i(k), {'p': a:pdd})})})
 
-	"return map(children, {_,j -> j[0].h !=# 'sealed' ? [extend(j[0], {'c': s:get_Children(a:tf, j[0].n)})] + j[1:] : j})
-	return map(children, {_,j -> map(j, {k,l -> k != 0 ? l : (has_key(l, 'h') && l.h ==# 'sealed' ? l : extend(l, {'c': s:get_Children(a:tf, l.n, j)}))})})
+	" Match should be a list of a list of partials, but outer len==1
+	call reduce(clientChildren, {_,c -> s:get_Children_handle_matches(parent, children, c, filter(copy(children), {_,j -> j[0].n ==# c[0].n}))}, 0)
+
+	"return map(children, {_,j -> j[0].h !=# 'sealed' ? [extend(j[0], {'c': s:get_Children(j[0].n)})] + j[1:] : j})
+	return map(children, {_,j -> map(j, {k,l -> k != 0 ? l : (has_key(l, 'h') && l.h ==# 'sealed' ? l : extend(l, {'c': s:get_Children(l.n, j)}))})})
+
+	" Attempt to replace the above nested map with nested reduce, no improvement
+	" in time. 5 seconds slower. Doing extend as a dict or list makes no time
+	" difference. Same with changing the get_Children caller? Still ~3-4s slow.
+	"call reduce(children, {_,j -> reduce(j, {k,l -> !empty(k) ? 1 : (has_key(l, 'h') && l.h ==# 'sealed' ? 1 : extend(l.c, s:get_Children(l.n, j)))}, 0)}, 0)
+	"return children
+endfunction
+
+" Called from s:get_Children to avoid slow for loop, seems maybe 0.5s faster
+" 198.5s -> 198.0s
+function! s:get_Children_handle_matches(parent, children, c, match)
+	if len(a:match) == 0
+		" No shared/server partials to merge client partials to
+		" Put them into children
+		call add(a:children, a:c)
+	elseif len(a:match) == 1
+		" Must merge the client partials to the shared/server partials
+		let dd = a:match[0]
+		if dd[0].h !=# 'sealed' || a:c[0].h !=# 'sealed'
+			echom 'anomaly in get_Children, Client/Server merge class unsealed, Client children will not be parsed, server:'.a:match[0][0].n. ' client:'.a:c[0].n
+			" Looks like ItemComponent isn't sealed... I may have to do
+			"  this algorithm differently then
+			" ItemComponent has both Client/Server classes, and each have
+			"  a child class 'ClothingComponent'. Oh looks like this was
+			"  fixed in master... need to update
+		endif
+		" Just add the partials together, the [DataField]s will merge
+		"  This works since these classes have no children
+		call extend(dd, a:c)
+	else
+		echom 'anomaly in get_Children, more than one sibling match, parent: '.a:parent.' child: '.c[0].n
+	endif
+	return 0
+endfunction
+
+" Run sanity checks for where ctags fails to parse the C# code properly
+function! s:tests(d)
+	" Check [DataDefinition]s:
+	let failedIndicies = filter(map(copy(a:d.e), {i,j->len(j)==0 ? i : -1}), {i,j -> j>=0 ? v:true : v:false})
+	" Query roots again to print the tags that failed:
+	let roots = s:splitup_attribute(robusttoolbox#filtertags('(and (#/(\[|,| )DataDefinition(,|\])/ $name) $kind (eq? $kind "A"))'))
+	for i in failedIndicies
+		echom 'The following [DataDefinition] attributes failed to match with their object, due to underlying failure to parse: '.string(roots[failedIndicies])
+	endfor
 endfunction

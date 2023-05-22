@@ -11,7 +11,12 @@ augroup ROBUST_TOOLBOX_VIM
 	au BufEnter *.cs,*.yml,*.yaml command! -buffer -bar -nargs=0 RTGenSchema call robusttoolbox#GenSchema()
 	au BufEnter *.cs,*.yml,*.yaml nnoremap <buffer> <Plug>(robusttoolbox_parse) :RTParse<CR>
 	au BufEnter *.cs,*.yml,*.yaml nnoremap <buffer> <Plug>(robusttoolbox_gen_schema) :RTGenSchema<CR>
+	"au User GutentagsUpdated call robusttoolbox#ParseData()
 augroup END
+
+" vim-denops {
+	let g:denops#debug = 1
+" }
 
 " vim-gutentags {
 	" Ensure vim-gutentags loaded on relevant filetypes
@@ -62,6 +67,7 @@ augroup END
 	\		 'hover': v:true,
 	\		 'validate': v:true,
 	\		 'trace': { 'server': 'debug' },
+	\		 'customTags': [ '!type:SetFloatOperator mapping' ],
 	\  }
 	\ }
 	\}
