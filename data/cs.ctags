@@ -13,6 +13,7 @@
 --map-c#=-.cs
 --map-cs=+.cs
 ###--_fielddef-cs=at,Attributes
+--_fielddef-cs=gl,global
 --_fielddef-cs=sl,sealed
 --_fielddef-cs=inherits,inherits
 --_fielddef-cs=type,type
@@ -34,7 +35,7 @@
 ### scope: prefix required for readtags $scope
 --fields=-nz
 --fields=+iaStsZ
---fields-cs=+{inherits}{sl}{type}{df}{pl}
+--fields-cs=+{gl}{inherits}{sl}{type}{df}{pl}
 --_tabledef-cs=main
 --_tabledef-cs=comment
 --_tabledef-cs=namespace
@@ -47,7 +48,7 @@
 # main (top level) table
 --_mtable-regex-cs=main/\/\*//p{tenter=comment}
 --_mtable-regex-cs=main/\/\/[^\n]*+//p
---_mtable-regex-cs=main/using ([^;]++)[;]/\1/U/p
+--_mtable-regex-cs=main/(?:(global) )?+using (?:(\b\w++\b) = )?+([^;]++)[;]/\3/U/p{_field=type:\2}{_field=gl:\1}
 --_mtable-regex-cs=main/namespace ([^\n{; ]++)(?: [{]|\n[{]|;)/\1/N/p{scope=push}{tenter=namespace}
 --_mtable-regex-cs=main/[^\n]+\n|[^\n]+|\n//p
 # Shouldn't ever happen:
@@ -67,6 +68,8 @@
 ###--_mtable-regex-cs=namespace/\h+//p
 --_mtable-regex-cs=namespace/\/\*//p{tenter=comment}
 --_mtable-regex-cs=namespace/\/\/[^\n]*+//p
+### Anomaly in some files... usings are beneath namespace, no worries about global though
+--_mtable-regex-cs=namespace/using (?:(\b\w++\b) = )?+([^;]++)[;]/\2/U/p{_field=type:\1}
 ### Old, no newline in attribute:
 ### --_mtable-regex-cs=namespace/(\[[^\]\n]++\])(?:[\h\n]++)?+//p{{
 --_mtable-regex-cs=namespace/(\[[^\]]++\])//p{{
@@ -95,7 +98,7 @@
 # Drop class qualifiers
 --_mtable-regex-cs=namespace/\bpartial\b //p
 #  namespace.class
---_mtable-regex-cs=namespace/(?:\b(sealed|abstract)\b )?+(?:\bunsafe\b )?+(?:\bpartial\b )?+(?:\brecord\b|\bclass\b|record class) ([^\n :{<\(]++(?<abrak>[<](?:[^><]*+(?&abrak)?+)*+[>])?+)(?<aparen>[\(](?:[^\)\(]*+(?&aparen)?+)*+[\)])?+(?: ?: ([^#{]++))?+(?:#[^\n]++\n *+)?+[^{]*+[{]/\2/C/p{_field=inherits:(\5)}{_field=pl:(\4)}{_field=sl:\1}{scope=push}{tenter=class}{{
+--_mtable-regex-cs=namespace/(?:\b(sealed|abstract)\b )?+(?:\bunsafe\b )?+(?:\bpartial\b )?+(?:\brecord\b|\bclass\b|record class) ([^\n :{<\(]++(?<abrak>[<](?:[^><]*+(?&abrak)?+)*+[>])?+)(?<aparen>[\(](?:[^\)\(]*+(?&aparen)?+)*+[\)])?+(?: ?: ([^#{;]++))?+(?:#[^\n]++\n *+)?+[^{;]*+[{]/\2/C/p{_field=inherits:(\5)}{_field=pl:(\4)}{_field=sl:\1}{scope=push}{tenter=class}{{
 	count -1 1 {
 		pop aload pop /attribute exch _tag _commit
 		dup \2 typeref:
@@ -103,7 +106,7 @@
 	} for
 }}
 #  namespace.record class (has params... annoying syntactic sugar... this captures no body)
---_mtable-regex-cs=namespace/(?:\b(sealed|abstract)\b )?+(?:\bunsafe\b )?+(?:\bpartial\b )?+\brecord\b (?:\bclass\b )([^\n :{<\(]++(?<abrak>[<](?:[^><]*+(?&abrak)?+)*+[>])?+)(?<aparen>[\(](?:[^\)\(]*+(?&aparen)?+)*+[\)])(?: ?: ([^#{;]++))?+(?:#[^\n]++\n *+)?+[^{;]*+;/\2/C/p{_field=inherits:(\5)}{_field=pl:(\4)}{_field=sl:\1}{scope=push}{{
+--_mtable-regex-cs=namespace/(?:\b(sealed|abstract)\b )?+(?:\bunsafe\b )?+(?:\bpartial\b )?+\brecord\b (?:\bclass\b )?+([^\n :{<\(]++(?<abrak>[<](?:[^><]*+(?&abrak)?+)*+[>])?+)(?<aparen>[\(](?:[^\)\(]*+(?&aparen)?+)*+[\)])(?: ?: ([^#{;]++))?+(?:#[^\n]++\n *+)?+[^{;]*+;/\2/C/p{_field=inherits:(\5)}{_field=pl:(\4)}{_field=sl:\1}{scope=push}{{
 	count -1 1 {
 		pop aload pop /attribute exch _tag _commit
 		dup \2 typeref:
@@ -175,7 +178,7 @@
 --_mtable-regex-cs=class/\bpartial\b //p
 #  class.class
 ### class must be before property to prevent property capturing it
---_mtable-regex-cs=class/(?:\b(sealed|abstract)\b )?+(?:\bunsafe\b )?+(?:\bpartial\b )?+(?:\brecord\b|\bclass\b|record class) ([^\n :{<\(]++(?<abrak>[<](?:[^><]*+(?&abrak)?+)*+[>])?+)(?<aparen>[\(](?:[^\)\(]*+(?&aparen)?+)*+[\)])?+(?: ?: ([^#{]++))?+(?:#[^\n]++\n *+)?+[^{]*+[{]/\2/C/p{_field=inherits:(\5)}{_field=pl:(\4)}{_field=sl:\1}{scope=push}{tenter=class}{{
+--_mtable-regex-cs=class/(?:\b(sealed|abstract)\b )?+(?:\bunsafe\b )?+(?:\bpartial\b )?+(?:\brecord\b|\bclass\b|record class) ([^\n :{<\(]++(?<abrak>[<](?:[^><]*+(?&abrak)?+)*+[>])?+)(?<aparen>[\(](?:[^\)\(]*+(?&aparen)?+)*+[\)])?+(?: ?: ([^#{;]++))?+(?:#[^\n]++\n *+)?+[^{;]*+[{]/\2/C/p{_field=inherits:(\5)}{_field=pl:(\4)}{_field=sl:\1}{scope=push}{tenter=class}{{
 	count -1 1 {
 		pop aload pop /attribute exch _tag _commit
 		dup \2 typeref:
@@ -183,7 +186,7 @@
 	} for
 }}
 #  class.record class
---_mtable-regex-cs=class/(?:\b(sealed|abstract)\b )?+(?:\bunsafe\b )?+(?:\bpartial\b )?+\brecord\b (?:\bclass\b )([^\n :{<\(]++(?<abrak>[<](?:[^><]*+(?&abrak)?+)*+[>])?+)(?<aparen>[\(](?:[^\)\(]*+(?&aparen)?+)*+[\)])(?: ?: ([^#{;]++))?+(?:#[^\n]++\n *+)?+[^{;]*+;/\2/C/p{_field=inherits:(\5)}{_field=pl:(\4)}{_field=sl:\1}{scope=push}{{
+--_mtable-regex-cs=class/(?:\b(sealed|abstract)\b )?+(?:\bunsafe\b )?+(?:\bpartial\b )?+\brecord\b (?:\bclass\b )?+([^\n :{<\(]++(?<abrak>[<](?:[^><]*+(?&abrak)?+)*+[>])?+)(?<aparen>[\(](?:[^\)\(]*+(?&aparen)?+)*+[\)])(?: ?: ([^#{;]++))?+(?:#[^\n]++\n *+)?+[^{;]*+;/\2/C/p{_field=inherits:(\5)}{_field=pl:(\4)}{_field=sl:\1}{scope=push}{{
 	count -1 1 {
 		pop aload pop /attribute exch _tag _commit
 		dup \2 typeref:
@@ -223,13 +226,13 @@
 # Drop function qualifiers
 --_mtable-regex-cs=namespace/\b(?:implicit|explicit)\b //p
 #  class.function (...)[ => ...];
---_mtable-regex-cs=class/((?:operator )?\b\w++\b|operator (?:\+\+?|--?|==|!=?|\/|\*|\<(?:\<|=)?|\>(?:\>|=)?|%|&|\||\^|~))(?<par>[\(](?:[^\)\(]*+(?&par)?+)*+[\)])\s?+ *+(?:=>[^;]++)?+;/\1/H/p{_field=pl:\2}{scope=ref}{{
+--_mtable-regex-cs=class/((?:operator )?+\b\w++\b(?<abrak>[<](?:[^><]*+(?&abrak)?+)*+[>])?+|operator (?:\+\+?|--?|==|!=?|\/|\*|\<(?:\<|=)?|\>(?:\>|=)?|%|&|\||\^|~))(?:\n *+)?+(?<par>[\(](?:[^\)\(]*+(?&par)?+)*+[\)])\s?+ *+(?:=>[^;]++)?+;/\1/H/p{_field=pl:\2}{scope=ref}{{
 	count -1 1 {
 		pop pop
 	} for
 }}
 #  class.function (...) { ... }
---_mtable-regex-cs=class/((?:operator )?\b\w++\b|operator (?:\+\+?|--?|==|!=?|\/|\*|\<(?:\<|=)?|\>(?:\>|=)?|%|&|\||\^|~))(?<par>[\(](?:[^\)\(]*+(?&par)?+)*+[\)])[^{\n]*+(?:\n *+)?+[{]/\1/H/p{_field=pl:\2}{scope=ref}{tenter=function}{{
+--_mtable-regex-cs=class/((?:operator )?+\b\w++\b(?<abrak>[<](?:[^><]*+(?&abrak)?+)*+[>])?+|operator (?:\+\+?|--?|==|!=?|\/|\*|\<(?:\<|=)?|\>(?:\>|=)?|%|&|\||\^|~))(?:\n *+)?+(?<par>[\(](?:[^\)\(]*+(?&par)?+)*+[\)])[^{\n]*+(?:\n *+)?+[{]/\1/H/p{_field=pl:\2}{scope=ref}{tenter=function}{{
 	count -1 1 {
 		pop pop
 	} for
@@ -278,7 +281,7 @@
 # Drop class qualifiers
 --_mtable-regex-cs=struct/\bpartial\b //p
 #  struct.class
---_mtable-regex-cs=struct/(?:\b(sealed|abstract)\b )?+(?:\bunsafe\b )?+(?:\bpartial\b )?+(?:\brecord\b|\bclass\b|record class) ([^\n :{<\(]++(?<abrak>[<](?:[^><]*+(?&abrak)?+)*+[>])?+)(?<aparen>[\(](?:[^\)\(]*+(?&aparen)?+)*+[\)])?+(?: ?: ([^#{]++))?+(?:#[^\n]++\n *+)?+[^{]*+[{]/\2/C/p{_field=inherits:(\5)}{_field=pl:(\4)}{_field=sl:\1}{scope=push}{tenter=class}{{
+--_mtable-regex-cs=struct/(?:\b(sealed|abstract)\b )?+(?:\bunsafe\b )?+(?:\bpartial\b )?+(?:\brecord\b|\bclass\b|record class) ([^\n :{<\(]++(?<abrak>[<](?:[^><]*+(?&abrak)?+)*+[>])?+)(?<aparen>[\(](?:[^\)\(]*+(?&aparen)?+)*+[\)])?+(?: ?: ([^#{;]++))?+(?:#[^\n]++\n *+)?+[^{;]*+[{]/\2/C/p{_field=inherits:(\5)}{_field=pl:(\4)}{_field=sl:\1}{scope=push}{tenter=class}{{
 	count -1 1 {
 		pop aload pop /attribute exch _tag _commit
 		dup \2 typeref:
@@ -286,7 +289,7 @@
 	} for
 }}
 #  struct.record class
---_mtable-regex-cs=struct/(?:\b(sealed|abstract)\b )?+(?:\bunsafe\b )?+(?:\bpartial\b )?+\brecord\b (?:\bclass\b )([^\n :{<\(]++(?<abrak>[<](?:[^><]*+(?&abrak)?+)*+[>])?+)(?<aparen>[\(](?:[^\)\(]*+(?&aparen)?+)*+[\)])(?: ?: ([^#{;]++))?+(?:#[^\n]++\n *+)?+[^{;]*+;/\2/C/p{_field=inherits:(\5)}{_field=pl:(\4)}{_field=sl:\1}{scope=push}{{
+--_mtable-regex-cs=struct/(?:\b(sealed|abstract)\b )?+(?:\bunsafe\b )?+(?:\bpartial\b )?+\brecord\b (?:\bclass\b )?+([^\n :{<\(]++(?<abrak>[<](?:[^><]*+(?&abrak)?+)*+[>])?+)(?<aparen>[\(](?:[^\)\(]*+(?&aparen)?+)*+[\)])(?: ?: ([^#{;]++))?+(?:#[^\n]++\n *+)?+[^{;]*+;/\2/C/p{_field=inherits:(\5)}{_field=pl:(\4)}{_field=sl:\1}{scope=push}{{
 	count -1 1 {
 		pop aload pop /attribute exch _tag _commit
 		dup \2 typeref:
@@ -322,13 +325,13 @@
 # Drop function qualifiers
 --_mtable-regex-cs=namespace/\b(?:implicit|explicit)\b //p
 #  struct.function (...)[ => ...];
---_mtable-regex-cs=struct/((?:operator )?\b\w++\b|operator (?:\+\+?|--?|==|!=?|\/|\*|\<(?:\<|=)?|\>(?:\>|=)?|%|&|\||\^|~))(?<par>[\(](?:[^\)\(]*+(?&par)?+)*+[\)])\s?+ *+(?:=>[^;]++)?+;/\1/H/p{_field=pl:\2}{scope=ref}{{
+--_mtable-regex-cs=struct/((?:operator )?+\b\w++\b(?<abrak>[<](?:[^><]*+(?&abrak)?+)*+[>])?+|operator (?:\+\+?|--?|==|!=?|\/|\*|\<(?:\<|=)?|\>(?:\>|=)?|%|&|\||\^|~))(?:\n *+)?+(?<par>[\(](?:[^\)\(]*+(?&par)?+)*+[\)])\s?+ *+(?:=>[^;]++)?+;/\1/H/p{_field=pl:\2}{scope=ref}{{
 	count -1 1 {
 		pop pop
 	} for
 }}
 #  struct.function (...) { ... }
---_mtable-regex-cs=struct/((?:operator )?\b\w++\b|operator (?:\+\+?|--?|==|!=?|\/|\*|\<(?:\<|=)?|\>(?:\>|=)?|%|&|\||\^|~))(?<par>[\(](?:[^\)\(]*+(?&par)?+)*+[\)])[^{\n]*+(?:\n *+)?+[{]/\1/H/p{_field=pl:\2}{scope=ref}{tenter=function}{{
+--_mtable-regex-cs=struct/((?:operator )?+\b\w++\b(?<abrak>[<](?:[^><]*+(?&abrak)?+)*+[>])?+|operator (?:\+\+?|--?|==|!=?|\/|\*|\<(?:\<|=)?|\>(?:\>|=)?|%|&|\||\^|~))(?:\n *+)?+(?<par>[\(](?:[^\)\(]*+(?&par)?+)*+[\)])[^{\n]*+(?:\n *+)?+[{]/\1/H/p{_field=pl:\2}{scope=ref}{tenter=function}{{
 	count -1 1 {
 		pop pop
 	} for

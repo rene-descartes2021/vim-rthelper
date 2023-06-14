@@ -85,23 +85,21 @@
 				"additionalProprties": false
 			}
 		},
-		"Component": {
-			"$id": "#/definitions/Component",
-			"description": "This doesn't appear on hover",
-			"properties": {
-				"type": {
-					"type": "string",
-					"description": "Type of component, either remove 'Component' suffix or use [ComponentProtoName('name')]",
-					"enum": []
-				}
-			},
-			"required": [ "type" ]
-		},
 		"char": {
 			"$id": "#/definitions/char",
 			"description": "[Shim]C# type: char",
 			"type": "string",
 			"pattern": "^.{1}$"
+		},
+		"object": {
+			"$id": "#/definitions/object",
+			"description": "[Shim]C# type: object",
+			"type": "object"
+		},
+		"Type": {
+			"$id": "#/definitions/Type",
+			"description": "[Shim]C# type: Type",
+			"type": "object"
 		},
 		"ResPath": {
 			"$id": "#/definitions/ResPath",

@@ -7,15 +7,19 @@
 
 augroup ROBUST_TOOLBOX_VIM
 	au!
-	au BufEnter *.cs,*.yml,*.yaml command! -buffer -bar -nargs=0 RTParse call robusttoolbox#ParseData()
+	au BufEnter *.cs,*.yml,*.yaml command! -buffer -bang -bar -nargs=0 RTParse call robusttoolbox#ParseData(<bang>0)
 	au BufEnter *.cs,*.yml,*.yaml command! -buffer -bar -nargs=0 RTGenSchema call robusttoolbox#GenSchema()
 	au BufEnter *.cs,*.yml,*.yaml nnoremap <buffer> <Plug>(robusttoolbox_parse) :RTParse<CR>
 	au BufEnter *.cs,*.yml,*.yaml nnoremap <buffer> <Plug>(robusttoolbox_gen_schema) :RTGenSchema<CR>
-	"au User GutentagsUpdated call robusttoolbox#ParseData()
 augroup END
 
+let g:robusttoolbox_run_on_tags_updated = get(g:, 'robusttoolbox_run_on_tags_updated', v:true)
+if g:robusttoolbox_run_on_tags_updated
+	au ROBUST_TOOLBOX_VIM User GutentagsUpdated call robusttoolbox#GenSchema()
+endif
+
 " vim-denops {
-	let g:denops#debug = 1
+	"let g:denops#debug = 1
 " }
 
 " vim-gutentags {
