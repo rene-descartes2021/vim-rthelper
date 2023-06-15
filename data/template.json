@@ -6,8 +6,7 @@
 	"type": "array",
 	"items": {
 		"type": "object",
-		"oneOf": [
-		],
+		"oneOf": [],
 		"additionalProprties": false
 	},
 	"definitions": {
@@ -17,27 +16,45 @@
 		},
 		"nullable-array": {
 			"$id": "#/definitions/nullable-array",
-			"type": ["array", "null"]
+			"type": [
+				"array",
+				"null"
+			]
 		},
 		"nullable-boolean": {
 			"$id": "#/definitions/nullable-boolean",
-			"type": ["boolean", "null"]
+			"type": [
+				"boolean",
+				"null"
+			]
 		},
 		"nullable-integer": {
 			"$id": "#/definitions/nullable-integer",
-			"type": ["integer", "null"]
+			"type": [
+				"integer",
+				"null"
+			]
 		},
 		"nullable-number": {
 			"$id": "#/definitions/nullable-number",
-			"type": ["number", "null"]
+			"type": [
+				"number",
+				"null"
+			]
 		},
 		"nullable-object": {
 			"$id": "#/definitions/nullable-object",
-			"type": ["object", "null"]
+			"type": [
+				"object",
+				"null"
+			]
 		},
 		"nullable-string": {
 			"$id": "#/definitions/nullable-string",
-			"type": ["string", "null"]
+			"type": [
+				"string",
+				"null"
+			]
 		},
 		"path": {
 			"type": "string",
@@ -73,7 +90,10 @@
 					"description": "C# type: string\rNotes: The 'in code name' of the object. Must be unique."
 				}
 			},
-			"required": [ "type", "id" ]
+			"required": [
+				"type",
+				"id"
+			]
 		},
 		"ComponentRegistry": {
 			"$id": "#/definitions/ComponentRegistry",
@@ -110,10 +130,14 @@
 			"$id": "#/definitions/TimeSpan",
 			"description": "[Shim]C# type: TimeSpan",
 			"oneOf": [
-				{ "type": "number" },
+				{
+					"type": "number"
+				},
 				{
 					"type": "array",
-					"items": { "type": "integer" },
+					"items": {
+						"type": "integer"
+					},
 					"minItems": 3,
 					"maxItems": 5
 				}
@@ -132,6 +156,19 @@
 					"description": "[Shim]C# type: Color\rC# scope: Robust.Shared.Maths\rNotes:An enum or hex, e.g. \"#FF00FF\" or \"#FF00FF00\"",
 					"pattern": "^#[A-Fa-f0-9]{6,8}$"
 				}
+			]
+		},
+		"DayOfWeek": {
+			"$id": "#/definitions/DayOfWeek",
+			"type": "string",
+			"enum": [
+				"Monday",
+				"Tuesday",
+				"Wednesday",
+				"Thursday",
+				"Friday",
+				"Saturday",
+				"Sunday"
 			]
 		},
 		"EntityUid": {
@@ -154,7 +191,9 @@
 			"$id": "#/definitions/FixedPoint2",
 			"description": "[Shim]C# type: FixedPoint2\rC# scope: Content.Shared.FixedPoint\rNotes:oneOf integer, double, or string",
 			"oneOf": [
-				{ "type": "number" }
+				{
+					"type": "number"
+				}
 			]
 		},
 		"FormattedMessage": {
@@ -179,6 +218,34 @@
 			"description": "[Shim]C# type: Vector4",
 			"type": "string",
 			"pattern": "^-?[0-9]+(\\.[0-9]+)?, ?-?[0-9]+(\\.[0-9]+)?, ?-?[0-9]+(\\.[0-9]+)?, ?-?[0-9]+(\\.[0-9]+)?$"
+		},
+		"SpriteSpecifier": {
+			"$id": "#/definitions/SpriteSpecifier",
+			"description": "[Shim]C# type: SpriteSpecifier",
+			"oneOf": [
+				{
+					"$ref": "#/definitions/ResPath",
+					"description": "[Shim]TexturePath"
+				},
+				{
+					"type": "string",
+					"description": "[Shim]EntityPrototypeId"
+				},
+				{
+					"type": "object",
+					"additionalProperties": false,
+					"properties": {
+						"sprite": {
+							"$ref": "#/definitions/ResPath",
+							"description": "[Shim]RsiPath"
+						},
+						"state": {
+							"type": "string",
+							"description": "[Shim]RsiState"
+						}
+					}
+				}
+			]
 		}
 	}
 }

@@ -50,6 +50,66 @@
 --_mtable-regex-cs=main/\/\/[^\n]*+//p
 --_mtable-regex-cs=main/(?:(global) )?+using (?:(\b\w++\b) = )?+([^;]++)[;]/\3/U/p{_field=type:\2}{_field=gl:\1}
 --_mtable-regex-cs=main/namespace ([^\n{; ]++)(?: [{]|\n[{]|;)/\1/N/p{scope=push}{tenter=namespace}
+### Anomaly in some files, stuff outside of namespace
+--_mtable-regex-cs=main/(\[[^\]]++\])//p{{
+	[\1 1 _matchloc]
+}}
+# Drop access qualifiers
+--_mtable-regex-cs=main/\b(?:public|private|protected|internal)\b //p
+# Drop struct qualifiers
+--_mtable-regex-cs=main/\b(?:unsafe|readonly)\b //p
+#  main.struct (body), struct goes before class so that 'record struct' not captured as record class 'struct'
+--_mtable-regex-cs=main/(?:\brecord\b )?+\bstruct\b ([^\n :{<\(]++(?<abrak>[<](?:[^><]*+(?&abrak)?+)*+[>])?+)(?<aparen>[\(](?:[^\)\(]*+(?&aparen)?+)*+[\)])?+(?: ?: ([^#{]++))?+(?:#[^\n]++\n *+)?+[^{]*+[{]/\1/S/p{_field=inherits:(\4)}{_field=pl:(\3)}{scope=push}{tenter=struct}{{
+	count -1 1 {
+		pop aload pop /attribute exch _tag _commit
+		dup \1 typeref:
+		_scoperef
+	} for
+}}
+#  main.record struct (no body)
+--_mtable-regex-cs=main/\brecord\b \bstruct\b ([^\n :{<\(]++(?<abrak>[<](?:[^><]*+(?&abrak)?+)*+[>])?+)(?<aparen>[\(](?:[^\)\(]*+(?&aparen)?+)*+[\)])(?: ?: ([^#{;]++))?+(?:#[^\n]++\n *+)?+[^{;]*+;/\1/S/p{_field=inherits:(\4)}{_field=pl:(\3)}{scope=push}{{
+	count -1 1 {
+		pop aload pop /attribute exch _tag _commit
+		dup \1 typeref:
+		_scoperef
+	} for
+}}
+# Drop class qualifiers
+--_mtable-regex-cs=main/\bpartial\b //p
+#  main.class
+--_mtable-regex-cs=main/(?:\b(sealed|abstract)\b )?+(?:\bunsafe\b )?+(?:\bpartial\b )?+(?:\brecord\b|\bclass\b|record class) ([^\n :{<\(]++(?<abrak>[<](?:[^><]*+(?&abrak)?+)*+[>])?+)(?<aparen>[\(](?:[^\)\(]*+(?&aparen)?+)*+[\)])?+(?: ?: ([^#{;]++))?+(?:#[^\n]++\n *+)?+[^{;]*+[{]/\2/C/p{_field=inherits:(\5)}{_field=pl:(\4)}{_field=sl:\1}{scope=push}{tenter=class}{{
+	count -1 1 {
+		pop aload pop /attribute exch _tag _commit
+		dup \2 typeref:
+		_scoperef
+	} for
+}}
+#  main.record class (has params... annoying syntactic sugar... this captures no body)
+--_mtable-regex-cs=main/(?:\b(sealed|abstract)\b )?+(?:\bunsafe\b )?+(?:\bpartial\b )?+\brecord\b (?:\bclass\b )?+([^\n :{<\(]++(?<abrak>[<](?:[^><]*+(?&abrak)?+)*+[>])?+)(?<aparen>[\(](?:[^\)\(]*+(?&aparen)?+)*+[\)])(?: ?: ([^#{;]++))?+(?:#[^\n]++\n *+)?+[^{;]*+;/\2/C/p{_field=inherits:(\5)}{_field=pl:(\4)}{_field=sl:\1}{scope=push}{{
+	count -1 1 {
+		pop aload pop /attribute exch _tag _commit
+		dup \2 typeref:
+		_scoperef
+	} for
+}}
+#  main.interface
+--_mtable-regex-cs=main/\binterface\b ([^\n: {<]++(?<abrak>[<](?:[^><]*+(?&abrak)?+)*+[>])?+)(?: ?: ([^#{]++))?+(?:#[^\n]++\n *+)?+[^{]*+[{]/\1/I/p{_field=inherits:(\3)}{scope=push}{tenter=class}{{
+	count -1 1 {
+		pop aload pop /attribute exch _tag _commit
+		dup \1 typeref:
+		_scoperef
+	} for
+}}
+# In class/struct tables, enum comes before class, dunno why? Oh, in those they must be before member/properties
+#  main.enum
+--_mtable-regex-cs=main/\benum\b (\b\w++\b)(?: ?: ([^\n{\/]++))?+(?: ?\/[^\n{]++)?+(?:\n *+)?+[{]/\1/G/p{scope=push}{tenter=enum}{{
+	count -1 1 {
+		pop aload pop /attribute exch _tag _commit
+		dup \1 typeref:
+		_scoperef
+	} for
+	. \2 typeref:
+}}
 --_mtable-regex-cs=main/[^\n]+\n|[^\n]+|\n//p
 # Shouldn't ever happen:
 #--_mtable-regex-cs=main/[}]//p{scope=clear}{tquit}
@@ -226,13 +286,13 @@
 # Drop function qualifiers
 --_mtable-regex-cs=namespace/\b(?:implicit|explicit)\b //p
 #  class.function (...)[ => ...];
---_mtable-regex-cs=class/((?:operator )?+\b\w++\b(?<abrak>[<](?:[^><]*+(?&abrak)?+)*+[>])?+|operator (?:\+\+?|--?|==|!=?|\/|\*|\<(?:\<|=)?|\>(?:\>|=)?|%|&|\||\^|~))(?:\n *+)?+(?<par>[\(](?:[^\)\(]*+(?&par)?+)*+[\)])\s?+ *+(?:=>[^;]++)?+;/\1/H/p{_field=pl:\2}{scope=ref}{{
+--_mtable-regex-cs=class/((?:operator )?+\b\w++\b(?<abrak>[<](?:[^><]*+(?&abrak)?+)*+[>])?+|operator (?:\+\+?|--?|==|!=?|\/|\*|\<(?:\<|=)?|\>(?:\>|=)?|%|&|\||\^|~))(?:\n *+)?+(?<par>[\(](?:[^\)\(]*+(?&par)?+)*+[\)])\s?+ *+(?:=>[^;]++)?+;/\1/H/p{_field=pl:\3}{scope=ref}{{
 	count -1 1 {
 		pop pop
 	} for
 }}
 #  class.function (...) { ... }
---_mtable-regex-cs=class/((?:operator )?+\b\w++\b(?<abrak>[<](?:[^><]*+(?&abrak)?+)*+[>])?+|operator (?:\+\+?|--?|==|!=?|\/|\*|\<(?:\<|=)?|\>(?:\>|=)?|%|&|\||\^|~))(?:\n *+)?+(?<par>[\(](?:[^\)\(]*+(?&par)?+)*+[\)])[^{\n]*+(?:\n *+)?+[{]/\1/H/p{_field=pl:\2}{scope=ref}{tenter=function}{{
+--_mtable-regex-cs=class/((?:operator )?+\b\w++\b(?<abrak>[<](?:[^><]*+(?&abrak)?+)*+[>])?+|operator (?:\+\+?|--?|==|!=?|\/|\*|\<(?:\<|=)?|\>(?:\>|=)?|%|&|\||\^|~))(?:\n *+)?+(?<par>[\(](?:[^\)\(]*+(?&par)?+)*+[\)])[^{\n]*+(?:\n *+)?+[{]/\1/H/p{_field=pl:\3}{scope=ref}{tenter=function}{{
 	count -1 1 {
 		pop pop
 	} for
@@ -325,13 +385,13 @@
 # Drop function qualifiers
 --_mtable-regex-cs=namespace/\b(?:implicit|explicit)\b //p
 #  struct.function (...)[ => ...];
---_mtable-regex-cs=struct/((?:operator )?+\b\w++\b(?<abrak>[<](?:[^><]*+(?&abrak)?+)*+[>])?+|operator (?:\+\+?|--?|==|!=?|\/|\*|\<(?:\<|=)?|\>(?:\>|=)?|%|&|\||\^|~))(?:\n *+)?+(?<par>[\(](?:[^\)\(]*+(?&par)?+)*+[\)])\s?+ *+(?:=>[^;]++)?+;/\1/H/p{_field=pl:\2}{scope=ref}{{
+--_mtable-regex-cs=struct/((?:operator )?+\b\w++\b(?<abrak>[<](?:[^><]*+(?&abrak)?+)*+[>])?+|operator (?:\+\+?|--?|==|!=?|\/|\*|\<(?:\<|=)?|\>(?:\>|=)?|%|&|\||\^|~))(?:\n *+)?+(?<par>[\(](?:[^\)\(]*+(?&par)?+)*+[\)])\s?+ *+(?:=>[^;]++)?+;/\1/H/p{_field=pl:\3}{scope=ref}{{
 	count -1 1 {
 		pop pop
 	} for
 }}
 #  struct.function (...) { ... }
---_mtable-regex-cs=struct/((?:operator )?+\b\w++\b(?<abrak>[<](?:[^><]*+(?&abrak)?+)*+[>])?+|operator (?:\+\+?|--?|==|!=?|\/|\*|\<(?:\<|=)?|\>(?:\>|=)?|%|&|\||\^|~))(?:\n *+)?+(?<par>[\(](?:[^\)\(]*+(?&par)?+)*+[\)])[^{\n]*+(?:\n *+)?+[{]/\1/H/p{_field=pl:\2}{scope=ref}{tenter=function}{{
+--_mtable-regex-cs=struct/((?:operator )?+\b\w++\b(?<abrak>[<](?:[^><]*+(?&abrak)?+)*+[>])?+|operator (?:\+\+?|--?|==|!=?|\/|\*|\<(?:\<|=)?|\>(?:\>|=)?|%|&|\||\^|~))(?:\n *+)?+(?<par>[\(](?:[^\)\(]*+(?&par)?+)*+[\)])[^{\n]*+(?:\n *+)?+[{]/\1/H/p{_field=pl:\3}{scope=ref}{tenter=function}{{
 	count -1 1 {
 		pop pop
 	} for

@@ -13,6 +13,7 @@ augroup ROBUST_TOOLBOX_VIM
 	au BufEnter *.cs,*.yml,*.yaml nnoremap <buffer> <Plug>(robusttoolbox_gen_schema) :RTGenSchema<CR>
 augroup END
 
+let g:robusttoolbox_use_customTags = get(g:, 'robusttoolbox_use_customTags', v:false)
 let g:robusttoolbox_run_on_tags_updated = get(g:, 'robusttoolbox_run_on_tags_updated', v:true)
 if g:robusttoolbox_run_on_tags_updated
 	au ROBUST_TOOLBOX_VIM User GutentagsUpdated call robusttoolbox#GenSchema()
@@ -55,9 +56,15 @@ endif
 " }
 
 " vim-lsp {
+"if exists('g:lsp_loaded')
 	" Multiple server instances seem to append into one log fine:
 	let g:lsp_log_file = fnamemodify(tempname(), ':h').'/vim-lsp.log'
 	"let g:gutentags_trace = 1
+
+	let in_dir = gutentags#get_project_root(getcwd()).'/Resources/Schemas'
+	let in_file = in_dir.'/customTags.json'
+	let customTags = g:robusttoolbox_use_customTags && filereadable(in_file) ?
+		\ json_decode(join(readfile(in_file, 'b')))['customTags'] : []
 
 	let g:asyncomplete_auto_popup = 1
 	let g:lsp_settings = get(g:, 'lsp_settings', {})
@@ -71,12 +78,12 @@ endif
 	\		 'hover': v:true,
 	\		 'validate': v:true,
 	\		 'trace': { 'server': 'debug' },
-	\		 'customTags': [ '!type:SetFloatOperator mapping' ],
+	\		 'customTags': customTags,
 	\  }
 	\ }
 	\}
+	"\		 'customTags': [ '!type:SetFloatOperator mapping' ],
 	"\ 'disabled': 1,
-	"\		'customTags': [],
 	"\		'schemaStore': { 'enable': v:true },
 
 	" Some notes on vim-lsp and notifying yaml-language-server of schema change:
@@ -90,4 +97,5 @@ endif
 
 	"call lsp#update_workspace_config('yaml-language-server', g:lsp_settings['yaml-language-server'].workspace_config)
 	" call lsp#send_request('yaml-language-server', { 'method': 'yaml/get/jsonSchema', 'params': expand('%')})
+"endif
 " }
