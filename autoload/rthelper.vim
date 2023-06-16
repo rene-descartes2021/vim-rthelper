@@ -142,6 +142,8 @@ function! rthelper#GenSchema() abort
 	" echom '[ImplicitDataDefinition]s... (including Components)'
 	" " Handle components, e.g. ['Paper', 'PlantHolder', ...]
 	let unRegistered = {}
+	" Mapping of yaml_name->dd, to be of lower priority if duplicate
+	let s:serverComponents = {}
 	let ScanComponentChildren = {j -> empty(map(values(j[0].c), {_,l -> ScanComponentChildren(l)})) ? s:BuildComponentDefinition(unRegistered, j) : s:BuildComponentDefinition(unRegistered, j)}
 	let s:tDefs['!type:Component'].properties = {}
 	let s:tDefs['!type:Component'].properties.type = {
@@ -597,6 +599,8 @@ function! s:BuildComponentDefinition(unRegistered, dd)
 	let isRegisterComponent = v:false
 	" Retrieve [ComponentProtoName("name")] attribs in parse
 	let isComponentProtoName = v:false
+	let isServer = v:false
+	let isClient = v:false
 	for partial in a:dd
 		" TODO: UtilityAI found twice here?
 		if has_key(partial, 'arc')
@@ -626,10 +630,12 @@ function! s:BuildComponentDefinition(unRegistered, dd)
 		if m != -1 && !prefixRemoved
 			let yaml_name = strcharpart(name, len('Client'))
 			let prefixRemoved = v:true
+			let isClient = v:true
 		endif
 		let m = match(name, '^Server')
 		if m != -1 && !prefixRemoved
 			let yaml_name = strcharpart(name, len('Server'))
+			let isServer = v:true
 		endif
 	endif
 	if a:dd[0].n ==# 'Component'
@@ -650,6 +656,37 @@ function! s:BuildComponentDefinition(unRegistered, dd)
 			let a:unRegistered[yaml_name] = a:dd
 		endif
 	else
+		let client_server_scope = matchlist(a:dd[0].s, '\V\[^.]\*.\(\.\{-}\).\.\*\$')
+		if !empty(client_server_scope)
+			echom 'worked: '.client_server_scope[1]
+			if client_server_scope[1] ==# 'Server'
+				let isServer = v:true
+			elseif client_server_scope[1] ==# 'Client'
+				let isClient = v:true
+			endif
+		endif
+		if isServer
+			if index(s:tDefs['!type:Component'].properties.type.enum, yaml_name) != -1
+				" Already made a client component of same yaml_name, ignore server side
+				return 0
+			endif
+			let s:serverComponents[yaml_name] = a:dd
+		elseif isClient
+			if index(s:tDefs['!type:Component'].properties.type.enum, yaml_name) != -1
+				" Already made a server component of same yaml_name, remove that
+				let s_dd = s:serverComponents[yaml_name]
+				let s_qname = s_dd[0].s . '.' . s_dd[0].n
+				let s_schema_name = s:scope_name_to_defs[s_qname]
+				let index = index(s:tDefinitions.ComponentRegistry.items.oneOf,
+					\ {'$ref': '#/$defs/definitions/'.s_schema_name})
+				if index != -1
+					call remove(s:tDefinitions.ComponentRegistry.items.oneOf, index)
+				else
+					echom 'BuildComponentDefinition index did not work'
+				endif
+				unlet s:tDefs[s_schema_name]['properties']['type']
+			endif
+		endif
 		let qname = a:dd[0].s . '.' . a:dd[0].n
 		if has_key(s:scope_name_to_defs, qname)
 			let schema_name = s:scope_name_to_defs[qname]
