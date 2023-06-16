@@ -32,6 +32,9 @@ Install RTHelper like any other Vim plugin.
 You can access Gutentags help pages with `help gutentags`, and RTHelper's help
 pages with `help rthelper`.
 
+The json schema is written to:
+`gutentags#get_project_root(getcwd()).'/Resources/Schemas/prototypes.json'`.
+
 
 ## What?
 
@@ -67,3 +70,30 @@ big.
 
 Navigating and making sense of RobustToolbox yaml files was difficult for me
 and I thought to make a tool to do so as an exercise.
+
+
+## Requirements?
+
+[vim-gutentags](https://bitbucket.org/ludovicchabant/vim-gutentags)
+[yaml-language-server](https://github.com/redhat-developer/yaml-language-server)
+
+ctags should be executable within Vim via `$PATH` or other Vim means and
+compiled with pcre2 support:
+```bash
+$ctags --version
+Universal Ctags 5.9.0(p5.9.20220807.0), Copyright (C) 2015-2022 Universal Ctags Team
+Universal Ctags is derived from Exuberant Ctags.
+Exuberant Ctags 5.8, Copyright (C) 1996-2009 Darren Hiebert
+  Compiled: Aug 13 2022, 13:33:55
+  URL: https://ctags.io/
+  Optional compiled features: +wildcards, +regex, +gnulib_regex, +iconv, +option-directory, +xpath, +json, +interactive, +packcc, +optscript, +pcre2
+```
+
+You might use different plugins to manage language servers than vim-lsp. If
+so then a PR is welcome containing how to initially configure
+yaml-language-server, update that configuration, and notify the server of
+a configuration change. All guarded with if(exists(g:your_favorite_plugin)).
+
+The integration with dein is in order to ensure that vim-gutentags is enabled
+for yaml and cs filetypes. PRs to similarly integrate with other plugin
+managers is acceptable.
