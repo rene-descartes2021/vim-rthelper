@@ -69,7 +69,7 @@ command! -nargs=0 RobustResource call execute('source '.s:self)
 " Parses data necessary for schema generation
 " Params:
 "  [in] recache: if true will recache any cache
-function! robusttoolbox#ParseData(recache) abort
+function! rthelper#ParseData(recache) abort
 	" d: The {p, i, e, G, ..., yids} definitions built by
 	"  parseCS+parseYAML from the ctags file(s)
 	let s:d = s:parseCS(a:recache)
@@ -78,16 +78,16 @@ function! robusttoolbox#ParseData(recache) abort
 endfunction
 
 " Generate monolithic schema
-function! robusttoolbox#GenSchema() abort
+function! rthelper#GenSchema() abort
 	if !isdirectory('RobustToolbox')
 		" Vim not launched within RobustToolbox content
 		return
 	endif
 	if !exists('s:d')
-		call robusttoolbox#ParseData(v:true)
+		call rthelper#ParseData(v:true)
 	endif
 	if exists('*dein#get')
-		let template_file = dein#get('robusttoolbox-vim').path.'/data/template.json'
+		let template_file = dein#get('rthelper-vim').path.'/data/template.json'
 	else
 		let s_dir = fnamemodify(expand('<sfile>'), ':p:h')
 		let template_file = s_dir.'/../data/template.json'
@@ -95,7 +95,7 @@ function! robusttoolbox#GenSchema() abort
 
 	let tI = reltime()
 	let in = join(readfile(template_file, 'b'))
-	echom '[robusttoolbox] '.reltimestr(reltime(tI)).'s Read template'
+	echom '[RTHepler] '.reltimestr(reltime(tI)).'s Read template'
 	let template = json_decode(in)
 
 	" Qualified name (scope.name) to definition ($defs) name mapping, to avoid
@@ -174,7 +174,7 @@ function! robusttoolbox#GenSchema() abort
 
 	call s:HandleUnresolved()
 
-	echom '[robusttoolbox] '.reltimestr(reltime(tI)).'s Schema generated'
+	echom '[rthelper] '.reltimestr(reltime(tI)).'s Schema generated'
 
 	let out = json_encode(template)
 	let out_dir = gutentags#get_project_root(getcwd()).'/Resources/Schemas'
@@ -183,11 +183,11 @@ function! robusttoolbox#GenSchema() abort
 	endif
 	let out_file = out_dir.'/prototypes.json'
 	call writefile([out], out_file, 'S')
-	echom '[robusttoolbox] '.reltimestr(reltime(tI)).'s Schema written'
+	echom '[rthelper] '.reltimestr(reltime(tI)).'s Schema written'
 	let out = json_encode({'customTags': yamlls_customTags})
 	let out_file = out_dir.'/customTags.json'
 	call writefile([out], out_file, 'S')
-	echom '[robusttoolbox] '.reltimestr(reltime(tI)).'s workspace/customTags written'
+	echom '[rthelper] '.reltimestr(reltime(tI)).'s workspace/customTags written'
 endfunction
 
 function! s:HandleUnresolved()
@@ -1282,37 +1282,37 @@ endfunction
 function! s:parseCS(recache) abort
 	let s:tf = b:gutentags_files.ctags
 	let tI = reltime()
-	echom '[robusttoolbox] Parsing usings'
+	echom '[rthelper] Parsing usings'
 	call s:get_Usings(a:recache)
-	echom '[robusttoolbox] Parsing interface hierarchy'
+	echom '[rthelper] Parsing interface hierarchy'
 	let h = s:get_Hierarchy()
-	echom '[robusttoolbox] Parsing [Serializable]s'
+	echom '[rthelper] Parsing [Serializable]s'
 	call s:get_Serializable()
-	echom '[robusttoolbox] Parsing [Prototype]s'
+	echom '[rthelper] Parsing [Prototype]s'
 	call s:get_Prototypes()
-	echom '[robusttoolbox] Parsing [DataRecord]s'
+	echom '[rthelper] Parsing [DataRecord]s'
 	call s:get_DataRecords()
-	echom '[robusttoolbox] Parsing explicit [DataDefinition]s'
+	echom '[rthelper] Parsing explicit [DataDefinition]s'
 	call s:get_ExplicitDataDefinitions()
-	echom '[robusttoolbox] Parsing implicit [DataDefinition]s'
+	echom '[rthelper] Parsing implicit [DataDefinition]s'
 	call s:get_ImplicitDataDefinitions()
-	"echom '[robusttoolbox] Parsing [Serializable] ctors'
+	"echom '[rthelper] Parsing [Serializable] ctors'
 	"call s:post_Serializable()
-	echom '[robusttoolbox] ['.reltimestr(reltime(tI))[:-5].'s] Parsing [Prototype]s and implicit/explicit [DataDefinition]s completed'
+	echom '[rthelper] ['.reltimestr(reltime(tI))[:-5].'s] Parsing [Prototype]s and implicit/explicit [DataDefinition]s completed'
 	" 95.45s with mtables and attribute tags, 7.6x slower than mlines
 	call s:get_DataFields()
-	echom '[robusttoolbox] ['.reltimestr(reltime(tI))[:-5].'s] Parsing+Processing [DataField]s completed'
+	echom '[rthelper] ['.reltimestr(reltime(tI))[:-5].'s] Parsing+Processing [DataField]s completed'
 	call s:get_AbstractDataFields()
 	call s:get_ParentDataFields()
-	echom '[robusttoolbox] ['.reltimestr(reltime(tI))[:-5].'s] Parsing+Processing [AbstractDataField][ParentDataField]s completed'
+	echom '[rthelper] ['.reltimestr(reltime(tI))[:-5].'s] Parsing+Processing [AbstractDataField][ParentDataField]s completed'
 	call s:get_Enums()
-	echom '[robusttoolbox] ['.reltimestr(reltime(tI)).'s] Parsing enums completed'
+	echom '[rthelper] ['.reltimestr(reltime(tI)).'s] Parsing enums completed'
 	let colors = s:get_Colors()
 	"May be faster knowing name rather than querying for all kind:G first
 	" Then kind:E
 	let FF = s:get_FlagsFor()
 	let CF = s:get_ConstantsFor()
-	echom '[robusttoolbox] ['.reltimestr(reltime(tI)).'s] Parsing [FlagsFor]&[ConstantsFor] completed'
+	echom '[rthelper] ['.reltimestr(reltime(tI)).'s] Parsing [FlagsFor]&[ConstantsFor] completed'
 	return #{h: h, colors: colors, FF: FF, CF: CF}
 endfunction
 
@@ -1320,15 +1320,15 @@ endfunction
 function! s:parseYAML() abort
 	let tI = reltime()
 	let yids = s:get_YAMLids()
-	echom '[robusttoolbox] Parsing YAML prototype ids completed in +'.reltimestr(reltime(tI)).' seconds'
+	echom '[rthelper] Parsing YAML prototype ids completed in +'.reltimestr(reltime(tI)).' seconds'
 	return {'yids': yids}
 endfunction
 
-function! robusttoolbox#filtertags(f) abort
+function! s:filtertags(f) abort
 	let ret = systemlist('readtags -t '.s:tf." -eE -Q '".a:f."' -l")
 	if v:shell_error
 		echohl ErrorMsg
-		echom '[robusttoolbox] readtags error: '.v:shell_error.' filter:'''.a:f.''''
+		echom '[rthelper] readtags error: '.v:shell_error.' filter:'''.a:f.''''
 		echohl None
 	endif
 	return ret
@@ -1336,7 +1336,7 @@ endfunction
 
 function! s:get_YAMLids()
 	" Step 1: Query id tags
-	let t = s:splitup_id(robusttoolbox#filtertags('(and $kind (eq? $kind "D")))'))
+	let t = s:splitup_id(s:filtertags('(and $kind (eq? $kind "D")))'))
 	" Step 2: Map into {type: [id, ...]} container
 	" TODO: See if sort quicker:
 	"  sort(t, {i,j -> ((i.t < j.t) == 0) ? -1 : 1})
@@ -1354,7 +1354,7 @@ endfunction
 " Gets all [ImplicitDataDefinitionForInheritors] class tags
 function! s:get_ImplicitDataDefinitions()
 	" Step 1: Query attribute tags
-	let a = s:splitup_attribute(robusttoolbox#filtertags('(and (#/(\[|,| )ImplicitDataDefinitionForInheritors(,|\])/ $name) $kind (eq? $kind "A")))'))
+	let a = s:splitup_attribute(s:filtertags('(and (#/(\[|,| )ImplicitDataDefinitionForInheritors(,|\])/ $name) $kind (eq? $kind "A")))'))
 	" Step 2: for each attribute tag: query the class/interface tags
 	" Gets scope-name from attribute of class to match class scope
 	let s:name_to_implicit = {}
@@ -1379,7 +1379,7 @@ function! s:get_ImplicitDataDefinitions()
 	endfor
 
 	" Step 3: Query ComponentProtoName attributes
-	let compProtoName = s:splitup_attribute(robusttoolbox#filtertags('(and (#/(\[|,| )ComponentProtoName\(/ $name) $kind (eq? $kind "A"))'))
+	let compProtoName = s:splitup_attribute(s:filtertags('(and (#/(\[|,| )ComponentProtoName\(/ $name) $kind (eq? $kind "A"))'))
 
 	" Step 4: Find component, search its children for each ComponontProtoName
 	"let component = filter(copy(roots), {i,j -> j[0].n ==# 'Component'})[0]
@@ -1408,7 +1408,7 @@ function! s:get_ImplicitDataDefinitions()
 	endfor
 
 	" Step 6: Query RegisterComponent attributes
-	let registerComponent = s:splitup_attribute(robusttoolbox#filtertags('(and (#/(\[|,| )RegisterComponent(,|\])/ $name) $kind (eq? $kind "A"))'))
+	let registerComponent = s:splitup_attribute(s:filtertags('(and (#/(\[|,| )RegisterComponent(,|\])/ $name) $kind (eq? $kind "A"))'))
 	" Step 7: Assign each [RegisterComponent] attribute to their component
 	" for a in registerComponent
 		" call ScanComponentChildren(component, a)
@@ -1428,7 +1428,7 @@ endfunction
 " Gets all [DataRecord] classes/structs
 function! s:get_DataRecords()
 	" Step 1: Query attribute tags
-	let a = s:splitup_attribute(robusttoolbox#filtertags('(and (#/(\[|,| )DataRecord(,|\])/ $name) $kind (eq? $kind "A"))'))
+	let a = s:splitup_attribute(s:filtertags('(and (#/(\[|,| )DataRecord(,|\])/ $name) $kind (eq? $kind "A"))'))
 
 	" Step 2: for each attribute tag get the relevant class/struct tags
 	let s:scope_name_to_record = {}
@@ -1454,7 +1454,7 @@ endfunction
 " Gets all [DataDefinition] classes in a list
 function! s:get_ExplicitDataDefinitions()
 	" Step 1: Query attribute tags
-	let a = s:splitup_attribute(robusttoolbox#filtertags('(and (#/(\[|,| )DataDefinition(,|\])/ $name) $kind (eq? $kind "A"))'))
+	let a = s:splitup_attribute(s:filtertags('(and (#/(\[|,| )DataDefinition(,|\])/ $name) $kind (eq? $kind "A"))'))
 
 	" Step 2: for each attribute tag get the relevant class/struct tags
 	let s:scope_name_to_explicit = {}
@@ -1488,7 +1488,7 @@ function! s:get_Usings(recache)
 		return
 	endif
 	let tI = reltime()
-	let u = s:splitup_using(robusttoolbox#filtertags('(and $kind (eq? $kind "U"))'))
+	let u = s:splitup_using(s:filtertags('(and $kind (eq? $kind "U"))'))
 	let s:file_to_using = {}
 	let s:path_to_global_using = {}
 	for uu in u
@@ -1510,7 +1510,7 @@ function! s:get_Usings(recache)
 			call add(s:path_to_global_using[p], uu)
 		endif
 	endfor
-	echom '[robusttoolbox] ['.reltimestr(reltime(tI))[:-5].'s] parsing usings completed'
+	echom '[rthelper] ['.reltimestr(reltime(tI))[:-5].'s] parsing usings completed'
 endfunction
 
 " Appends scopes of parents to usings
@@ -1559,7 +1559,7 @@ endfunction
 "  TODO: Handle partials? Helper functions expect partials, and if I am to
 "  link this to existing partials... then this should handle partials.
 function! s:get_Hierarchy()
-	let h = s:splitup_class_struct(robusttoolbox#filtertags('(and $kind (#/(C|S|I)/ $kind))'))
+	let h = s:splitup_class_struct(s:filtertags('(and $kind (#/(C|S|I)/ $kind))'))
 	let s:scope_name_to_dd = {}
 	let s:name_to_dd = {}
 	let s:scope_name_to_yamlname = {}
@@ -1764,7 +1764,7 @@ endfunction
 " Added a few minutes, typescript will really help with parallel execution
 function! s:get_Serializable()
 	" Step 1: Query attribute tags
-	let a = s:splitup_attribute(robusttoolbox#filtertags('(and (#/(\[|,| )Serializable(\]|,| )/ $name) $kind (eq? $kind "A") (not (eq? $scope-kind "enumeration")))'))
+	let a = s:splitup_attribute(s:filtertags('(and (#/(\[|,| )Serializable(\]|,| )/ $name) $kind (eq? $kind "A") (not (eq? $scope-kind "enumeration")))'))
 
 	" Step 2: For each attribute tag: lookup the class|struct tags using
 	"  scope_name_to_dd
@@ -1832,7 +1832,7 @@ function! s:OBSOLETE_post_Serializable(s, p, e, i)
 	" Step 4: Query the ctors (same name as class/struct)
 	" Just stick all the partials ctors onto the first partial
 	for s in ret
-		let s[0]['H'] = s:splitup_function(robusttoolbox#filtertags('(and (eq? $name "'.s[0].n.'") $kind (eq? $kind "H") (eq? $scope-name "'.s[0].s . '.' . s[0].n.'"))'))
+		let s[0]['H'] = s:splitup_function(s:filtertags('(and (eq? $name "'.s[0].n.'") $kind (eq? $kind "H") (eq? $scope-name "'.s[0].s . '.' . s[0].n.'"))'))
 	endfor
 	return ret
 endfunction
@@ -1841,7 +1841,7 @@ endfunction
 function! s:get_Prototypes()
 	let tI = reltime()
 	" Step 1: Query attribute tags
-	let a = s:splitup_attribute(robusttoolbox#filtertags('(and (#/(\[|,| )Prototype\(\"/ $name) $kind (eq? $kind "A"))'))
+	let a = s:splitup_attribute(s:filtertags('(and (#/(\[|,| )Prototype\(\"/ $name) $kind (eq? $kind "A"))'))
 
 	" Step 2: For each attribute tag: lookup the class tags in scope_name_to_dd
 	" Gets scope-name from attribute of class to match class scope
@@ -1860,7 +1860,7 @@ function! s:get_Prototypes()
 		endif
 		let s:scope_name_to_Prototype[scope][s:scope_name_to_dd[scope][aa.t][0].n] = s:scope_name_to_dd[scope][aa.t]
 	endfor
-	echom '[robusttoolbox] Parsing [Prototype]s completed in +'.reltimestr(reltime(tI))[:-5].' seconds'
+	echom '[rthelper] Parsing [Prototype]s completed in +'.reltimestr(reltime(tI))[:-5].' seconds'
 endfunction
 
 " [ConstantsFor][FlagsFor] attributes are post-processed to include:
@@ -1922,7 +1922,7 @@ endfunction
 
 function! s:get_ForInner(forAttrib)
 	" Step 1: Query attribute tags:
-	let a = s:splitup_attribute(robusttoolbox#filtertags('(and (#/(\[|,| )'.a:forAttrib.'\(/ $name) $kind (eq? $kind "A"))'))
+	let a = s:splitup_attribute(s:filtertags('(and (#/(\[|,| )'.a:forAttrib.'\(/ $name) $kind (eq? $kind "A"))'))
 
 	call map(a, {_,j -> s:Splitup_attribute_for(a:forAttrib, j)})
 
@@ -1963,7 +1963,7 @@ endfunction
 " params:
 " [in] a: List of attributes with df
 function! s:AssignAToMP(a)
-	"echom '[robusttoolbox] len attribs before dd search: '.len(a)
+	"echom '[rthelper] len attribs before dd search: '.len(a)
 	"let index = 0
 	"let matches = 0
 	for aa in a:a
@@ -2000,15 +2000,15 @@ function! s:AssignAToMP(a)
 		endfor
 		"let index += 1
 	endfor
-	"echom '[robusttoolbox] len attribs after dd search: '.len(a)
-	"echom '[robusttoolbox] matches after dd search: '.matches
+	"echom '[rthelper] len attribs after dd search: '.len(a)
+	"echom '[rthelper] matches after dd search: '.matches
 endfunction
 
 " Gets all qualified [DataField] members/properties
 function! s:get_DataFields()
 	let tI = reltime()
 	" Step 1: Query attribute tags:
-	let a = s:splitup_attribute(robusttoolbox#filtertags('(and (#/(\[|,| )DataField\(/ $name) $kind (eq? $kind "A"))'))
+	let a = s:splitup_attribute(s:filtertags('(and (#/(\[|,| )DataField\(/ $name) $kind (eq? $kind "A"))'))
 
 	call map(a, {_,j -> s:Splitup_attribute_datafield(j)})
 
@@ -2024,9 +2024,9 @@ function! s:get_DataFields()
 	"  element of container sublist. New element being a list of
 	"  [DataField] tags, and somehow store attribute on that tag dict.
 	" SLOWWW:
-	"let t = map(copy(a), {_,j -> map(robusttoolbox#filtertags('(and (eq? $name "'.j.t.'") (eq? $scope-name "'.j.s.'"))'), {_1,m -> s:splitup_member_property_i(m)})})
+	"let t = map(copy(a), {_,j -> map(s:filtertags('(and (eq? $name "'.j.t.'") (eq? $scope-name "'.j.s.'"))'), {_1,m -> s:splitup_member_property_i(m)})})
 	" TODO: Alternate of above, test for better time, also no sublist:
-	"let t = map(copy(a), {_,j -> s:splitup_member_property_i(robusttoolbox#filtertags('(and (eq? $name "'.j.t.'") (eq? $scope-name "'.j.s.'"))')[0])})
+	"let t = map(copy(a), {_,j -> s:splitup_member_property_i(s:filtertags('(and (eq? $name "'.j.t.'") (eq? $scope-name "'.j.s.'"))')[0])})
 	"for i in range(len(t))
 	""	let t[i] = t[i][0]
 	"	let t[i].a = a[i].n
@@ -2036,7 +2036,7 @@ function! s:get_DataFields()
 	"call map(t, {i,j -> extend(j, {'a': a[i]})})
 
 	" Step 2: Get all M|P, map into scope -> [M|P]
-	let mp = map(robusttoolbox#filtertags('(and $kind (#/(M|P)/ $kind))'), {_,j -> s:splitup_member_property_i(j)})
+	let mp = map(s:filtertags('(and $kind (#/(M|P)/ $kind))'), {_,j -> s:splitup_member_property_i(j)})
 	let s:scope_name_to_MP = {}
 	for i in mp
 		if !has_key(s:scope_name_to_MP, i.s)
@@ -2051,7 +2051,7 @@ function! s:get_DataFields()
 		let aa.df = s:scope_name_to_MP[aa.s][aa.t]
 	endfor
 
-	echom '[robusttoolbox] Parsing [DataField]s completed in +'.reltimestr(reltime(tI))[:-5].' seconds'
+	echom '[rthelper] Parsing [DataField]s completed in +'.reltimestr(reltime(tI))[:-5].' seconds'
 	" 167.9s
 
 	" Step 3: Store [DataField] tags on prototypes and datadefinitions
@@ -2077,10 +2077,10 @@ function! s:get_DataFields()
 	" let s:R3 = {o,j -> len(filter(copy(o), {_,i -> len(filter(copy(i), {_1,p -> !empty((has_key(p,'c') && !empty(p.c)) ? s:R3(p.c, j) : v:false) || s:Z3(p,j)}))}))}
 	" let g:t = deepcopy(t)
 	" call filter(t, {_,j -> !s:R3(a:i, j)})
-	" echom '[robusttoolbox] len attribs after implicits: '.len(aa)
-	" echom '[robusttoolbox] s:matches after implicits: '.s:matches
+	" echom '[rthelper] len attribs after implicits: '.len(aa)
+	" echom '[rthelper] s:matches after implicits: '.s:matches
 
-	echom '[robusttoolbox] Processing [DataField]s completed in +'.reltimestr(reltime(tI))[:-5].' seconds'
+	echom '[rthelper] Processing [DataField]s completed in +'.reltimestr(reltime(tI))[:-5].' seconds'
 	" 6.84s only p,e, encoding flux
 	" 5.2s only p,e, encoding flux
 	" 6.0s only p,e, encoding flux, with Z lambda
@@ -2094,7 +2094,7 @@ endfunction
 
 function! s:get_AbstractDataFields()
 	" Step 1: Query attribute tags:
-	let a = s:splitup_attribute(robusttoolbox#filtertags('(and (#/(\[|,| )AbstractDataField(Attribute)?(\]|,)/ $name) $kind (eq? $kind "A"))'))
+	let a = s:splitup_attribute(s:filtertags('(and (#/(\[|,| )AbstractDataField(Attribute)?(\]|,)/ $name) $kind (eq? $kind "A"))'))
 
 	" [AbstractDataField] has Name of 'abstract' in ctor
 	call map(a, {_,j -> extend(j, {'nn': 'abstract'})})
@@ -2103,7 +2103,7 @@ function! s:get_AbstractDataFields()
 	" Gets scope-name from attribute of M/P tag to determine container
 	" container scope, appears to only be in:
 	"  The Prototype sublist, the attribute/scope element
-	"let t = map(copy(a), {_,j -> s:splitup_member_property_i(robusttoolbox#filtertags('(and (eq? $name "'.j.t.'") (eq? $scope-name "'.j.s.'"))')[0])})
+	"let t = map(copy(a), {_,j -> s:splitup_member_property_i(s:filtertags('(and (eq? $name "'.j.t.'") (eq? $scope-name "'.j.s.'"))')[0])})
 	"call map(t, {i,j -> extend(j, {'a': a[i]})})
 	for aa in a
 		let aa.df = s:scope_name_to_MP[aa.s][aa.t]
@@ -2114,15 +2114,15 @@ function! s:get_AbstractDataFields()
 	"  intelligent updating, but would need to compare $input file,
 	"  for now put all [DataField]s on first partial
 	" TODO: I now do all partials, fix change effects
-	"echom '[robusttoolbox] len [AbstractDataField] before prototypes: '.len(aa)
+	"echom '[rthelper] len [AbstractDataField] before prototypes: '.len(aa)
 	"call filter(t, {_,j -> !len(filter(copy(a:p), {_1,e -> len(filter(copy(e), {_2,p -> s:Z3(p,j)}))}))})
 	call s:AssignAToMP(a)
-	"echom '[robusttoolbox] len [AbstractDataField] after prototypes: '.len(aa)
+	"echom '[rthelper] len [AbstractDataField] after prototypes: '.len(aa)
 endfunction
 
 function! s:get_ParentDataFields()
 	" Step 1: Query attribute tags:
-	let a = s:splitup_attribute(robusttoolbox#filtertags('(and (#/(\[|,| )ParentDataField(Attribute)?\(/ $name) $kind (eq? $kind "A"))'))
+	let a = s:splitup_attribute(s:filtertags('(and (#/(\[|,| )ParentDataField(Attribute)?\(/ $name) $kind (eq? $kind "A"))'))
 
 	" [ParentDataField] has Name of 'parent' in ctor
 	call map(a, {i,j -> s:Splitup_attribute_parentdatafield(j)})
@@ -2131,7 +2131,7 @@ function! s:get_ParentDataFields()
 	" Gets scope-name from attribute of M/P tag to determine container
 	" container scope, appears to only be in:
 	"  The Prototype sublist, the attribute/scope element
-	"let t = map(copy(a), {_,j -> s:splitup_member_property_i(robusttoolbox#filtertags('(and (eq? $name "'.j.t.'") (eq? $scope-name "'.j.s.'"))')[0])})
+	"let t = map(copy(a), {_,j -> s:splitup_member_property_i(s:filtertags('(and (eq? $name "'.j.t.'") (eq? $scope-name "'.j.s.'"))')[0])})
 	"call map(t, {i,j -> extend(j, {'a': a[i]})})
 	for aa in a
 		let aa.df = s:scope_name_to_MP[aa.s][aa.t]
@@ -2142,10 +2142,10 @@ function! s:get_ParentDataFields()
 	"  intelligent updating, but would need to compare $input file,
 	"  for now put all [DataField]s on first partial
 	" TODO: I now do all partials, fix change effects
-	"echom '[robusttoolbox] len [ParentDataField] before prototypes: '.len(t)
+	"echom '[rthelper] len [ParentDataField] before prototypes: '.len(t)
 	"call filter(t, {_,j -> !len(filter(copy(a:p), {_1,e -> len(filter(copy(e), {_2,p -> s:Z3(p,j)}))}))})
 	call s:AssignAToMP(a)
-	"echom '[robusttoolbox] len [ParentDataField] after prototypes: '.len(t)
+	"echom '[rthelper] len [ParentDataField] after prototypes: '.len(t)
 endfunction
 
 " KLUDGE: Assuming scope-kind on attribute will be enumeration
@@ -2155,7 +2155,7 @@ endfunction
 "   enumerators: {n:name, v:value}
 function! s:get_Enums()
 	" Step 1: Get enum tags
-	let g = map(robusttoolbox#filtertags('(and $kind (eq? $kind "G"))'), {i,j -> s:splitup_enum_i(j)})
+	let g = map(s:filtertags('(and $kind (eq? $kind "G"))'), {i,j -> s:splitup_enum_i(j)})
 	let s:scope_name_to_Enum = {}
 	for gg in g
 		if !has_key(s:scope_name_to_Enum, gg.s)
@@ -2165,7 +2165,7 @@ function! s:get_Enums()
 	endfor
 
 	" Step 3 (now 2): for each enum get every enumerator
-	let e = map(robusttoolbox#filtertags('(and $kind (eq? $kind "E"))'), {_,l -> s:splitup_enumerator_i(l)})
+	let e = map(s:filtertags('(and $kind (eq? $kind "E"))'), {_,l -> s:splitup_enumerator_i(l)})
 	for ee in e
 		let scope = matchlist(ee.s, '\V\(\.\*\).\(\.\*\)\$')
 		if empty(scope)
@@ -2177,7 +2177,7 @@ function! s:get_Enums()
 endfunction
 
 function! s:get_Colors()
-	return s:splitup_member(robusttoolbox#filtertags('(and $kind (eq? $kind "M") (eq? $scope-name "Robust.Shared.Maths.Color") (eq? ($"type") "Color"))'))
+	return s:splitup_member(s:filtertags('(and $kind (eq? $kind "M") (eq? $scope-name "Robust.Shared.Maths.Color") (eq? ($"type") "Color"))'))
 endfunction
 
 " For kind:D puts into {n:name, f:file, t:typename}
@@ -2235,7 +2235,7 @@ function! s:splitup_class_struct(list)
 				" Ok the problem is the inherits contains a couple new() new() which
 				" throws off the inherits: group termination, and extended posix regex
 				" can't handle nested parentheses...
-				" The following is bad:ComponentTreeSystem<TTreeComp,TComp>^I/home/browser/dev/space-station-14/RobustToolbox/Robust.Shared/ComponentTrees/ComponentTreeSystem.cs^I18;"^Ikind:C^Iscope:namespace:Robust.Shared.ComponentTrees^Iinherits:(EntitySystem\nwhere TTreeComp : Component, IComponentTreeComponent<TComp>, new()\nwhere TComp : Component, IComponentTreeEntry<TComp>, neW()\N)^iSL:ABSTRACt with result dict:[]"
+				" The following is bad:ComponentTreeSystem<TTreeComp,TComp>^IComponentTreeSystem.cs^I18;"^Ikind:C^Iscope:namespace:Robust.Shared.ComponentTrees^Iinherits:(EntitySystem\nwhere TTreeComp : Component, IComponentTreeComponent<TComp>, new()\nwhere TComp : Component, IComponentTreeEntry<TComp>, neW()\N)^iSL:ABSTRACt with result dict:[]"
 				echom 'The following failed to match in splitup_class_struct:'.a:list[j].' with result dict:'.string(k)
 			endif
 			let foo[j] = k

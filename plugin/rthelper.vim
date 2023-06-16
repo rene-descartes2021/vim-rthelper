@@ -5,19 +5,22 @@
 " Query tagsfile g:gutentags_cache_dir/g:gutentags_ctags_tagfile
 " e.g. ~/.config/tags/.tags
 let g:rthelper_enabled = get(g:, 'rthelper_enabled', v:true)
+if !g:rthelper_enabled
+	finish
+endif
 
-augroup ROBUST_TOOLBOX_VIM
+augroup RTHELPER_VIM
 	au!
-	au BufEnter *.cs,*.yml,*.yaml command! -buffer -bang -bar -nargs=0 RTParse call robusttoolbox#ParseData(<bang>0)
-	au BufEnter *.cs,*.yml,*.yaml command! -buffer -bar -nargs=0 RTGenSchema call robusttoolbox#GenSchema()
-	au BufEnter *.cs,*.yml,*.yaml nnoremap <buffer> <Plug>(robusttoolbox_parse) :RTParse<CR>
-	au BufEnter *.cs,*.yml,*.yaml nnoremap <buffer> <Plug>(robusttoolbox_gen_schema) :RTGenSchema<CR>
+	au BufEnter *.cs,*.yml,*.yaml command! -buffer -bang -bar -nargs=0 RTParse call rthelper#ParseData(<bang>0)
+	au BufEnter *.cs,*.yml,*.yaml command! -buffer -bar -nargs=0 RTGenSchema call rthelper#GenSchema()
+	au BufEnter *.cs,*.yml,*.yaml nnoremap <buffer> <Plug>(rthelper_parse) :RTParse<CR>
+	au BufEnter *.cs,*.yml,*.yaml nnoremap <buffer> <Plug>(rthelper_gen_schema) :RTGenSchema<CR>
 augroup END
 
-let g:robusttoolbox_use_customTags = get(g:, 'robusttoolbox_use_customTags', v:false)
-let g:robusttoolbox_run_on_tags_updated = get(g:, 'robusttoolbox_run_on_tags_updated', v:true)
-if g:robusttoolbox_run_on_tags_updated
-	au ROBUST_TOOLBOX_VIM User GutentagsUpdated call robusttoolbox#GenSchema()
+let g:rthelper_use_customTags = get(g:, 'rthelper_use_customTags', v:false)
+let g:rthelper_run_on_tags_updated = get(g:, 'rthelper_run_on_tags_updated', v:true)
+if g:rthelper_run_on_tags_updated
+	au RTHELPER_VIM User GutentagsUpdated call rthelper#GenSchema()
 endif
 
 " vim-denops {
@@ -63,7 +66,7 @@ endif
 
 	let in_dir = gutentags#get_project_root(getcwd()).'/Resources/Schemas'
 	let in_file = in_dir.'/customTags.json'
-	let customTags = g:robusttoolbox_use_customTags && filereadable(in_file) ?
+	let customTags = g:rthelper_use_customTags && filereadable(in_file) ?
 		\ json_decode(join(readfile(in_file, 'b')))['customTags'] : []
 
 	let g:asyncomplete_auto_popup = 1
