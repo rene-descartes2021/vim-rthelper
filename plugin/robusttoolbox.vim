@@ -4,6 +4,7 @@
 " A json schema is then generated for RobustToolbox prototypes
 " Query tagsfile g:gutentags_cache_dir/g:gutentags_ctags_tagfile
 " e.g. ~/.config/tags/.tags
+let g:rthelper_enabled = get(g:, 'rthelper_enabled', v:true)
 
 augroup ROBUST_TOOLBOX_VIM
 	au!
@@ -56,7 +57,6 @@ endif
 " }
 
 " vim-lsp {
-"if exists('g:lsp_loaded')
 	" Multiple server instances seem to append into one log fine:
 	let g:lsp_log_file = fnamemodify(tempname(), ':h').'/vim-lsp.log'
 	"let g:gutentags_trace = 1
@@ -97,5 +97,4 @@ endif
 
 	"call lsp#update_workspace_config('yaml-language-server', g:lsp_settings['yaml-language-server'].workspace_config)
 	" call lsp#send_request('yaml-language-server', { 'method': 'yaml/get/jsonSchema', 'params': expand('%')})
-"endif
 " }
