@@ -12,7 +12,7 @@ endif
 augroup RTHELPER_VIM
 	au!
 	au BufEnter *.cs,*.yml,*.yaml command! -buffer -bang -bar -nargs=0 RTParse call rthelper#ParseData(<bang>0)
-	au BufEnter *.cs,*.yml,*.yaml command! -buffer -bar -nargs=0 RTGenSchema call rthelper#GenSchema()
+	au BufEnter *.cs,*.yml,*.yaml command! -buffer -bar -nargs=? RTGenSchema call rthelper#GenSchema(<q-args>)
 	au BufEnter *.cs,*.yml,*.yaml nnoremap <buffer> <Plug>(rthelper_parse) :RTParse<CR>
 	au BufEnter *.cs,*.yml,*.yaml nnoremap <buffer> <Plug>(rthelper_gen_schema) :RTGenSchema<CR>
 augroup END
@@ -40,6 +40,7 @@ endif
 	let ctags_cs_file = fnamemodify(expand('<sfile>'), ':h').'/../data/cs.ctags'
 	let ctags_yaml_file = fnamemodify(expand('<sfile>'), ':h').'/../data/yaml.ctags'
 
+	"let g:gutentags_trace = 1
 	let g:gutentags_ctags_extra_args = get(g:, 'gutentags_ctags_extra_args', [])
 
 	let g:gutentags_ctags_extra_args += [
@@ -60,16 +61,21 @@ endif
 " }
 
 " vim-lsp {
-	" Multiple server instances seem to append into one log fine:
-	let g:lsp_log_file = fnamemodify(tempname(), ':h').'/vim-lsp.log'
-	"let g:gutentags_trace = 1
-
-	let in_dir = gutentags#get_project_root(getcwd()).'/Resources/Schemas'
-	let in_file = in_dir.'/customTags.json'
-	let customTags = g:rthelper_use_customTags && filereadable(in_file) ?
-		\ json_decode(join(readfile(in_file, 'b')))['customTags'] : []
-
+	" asyncomplete is plugin that goes with vim-lsp
 	let g:asyncomplete_auto_popup = 1
+
+	let g:lsp_log_file = fnamemodify(tempname(), ':h').'/vim-lsp.log'
+
+	let in_dir = (exists('*gutentags#get_project_root') ?
+		\ gutentags#get_project_root(getcwd()) : getcwd()) . '/Resources/Schemas'
+	if g:rthelper_use_customTags && isdirectory(in_dir)
+		let in_file = in_dir.'/customTags.json'
+		let customTags = filereadable(in_file) ?
+			\ json_decode(join(readfile(in_file, 'b')))['customTags'] : []
+	else
+		let customTags = []
+	endif
+
 	let g:lsp_settings = get(g:, 'lsp_settings', {})
 	let g:lsp_settings['yaml-language-server'] = {
 	\ 'workspace_config': {

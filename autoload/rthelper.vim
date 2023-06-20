@@ -70,6 +70,7 @@ command! -nargs=0 RobustResource call execute('source '.s:self)
 " Params:
 "  [in] recache: if true will recache any cache
 function! rthelper#ParseData(recache) abort
+	let s:tf = get(s:, 'tf', b:gutentags_files.ctags)
 	" d: The {p, i, e, G, ..., yids} definitions built by
 	"  parseCS+parseYAML from the ctags file(s)
 	let s:d = s:parseCS(a:recache)
@@ -78,10 +79,20 @@ function! rthelper#ParseData(recache) abort
 endfunction
 
 " Generate monolithic schema
+"  Vim can be launched non-interactively like so:
+"  $ vim -es +'RTGenSchema /tmp/rt.tags' +qall
+" Params:
+"  [in] tf: tag filename to use, if not using gutentags
+function! rthelper#GenSchema(tf) abort
+	if !empty(a:tf)
+		let s:tf = a:tf
+	endif
+	return rthelper#GenSchema()
+endfunction
 function! rthelper#GenSchema() abort
 	if !isdirectory('RobustToolbox')
 		" Vim not launched within RobustToolbox content
-		return
+		return 1
 	endif
 	if !exists('s:d')
 		call rthelper#ParseData(v:true)
@@ -117,7 +128,7 @@ function! rthelper#GenSchema() abort
 	" vim-lsp integration: update yamlls configuration with customTags shims
 	let yamlls_customTags = map(copy(s:d.h), {_,j -> '!type:'.j.n.' mapping'}) +
 		\ map(copy(s:d.h), {_,j -> '!type:'.j.n.' scalar'})
-	if exists('g:lsp_loaded')
+	if exists('*lsp#update_workspace_config')
 		" 'customTags': [ '!type:SetFloatOperator mapping' ],
 		"let g:lsp_settings['yaml-language-server']['workspace_config']['customTags'] =
 		"			\ map(copy(s:d.h), {_,j -> '!type:'.j.n.' mapping'})
@@ -179,7 +190,8 @@ function! rthelper#GenSchema() abort
 	echom '[rthelper] '.reltimestr(reltime(tI)).'s Schema generated'
 
 	let out = json_encode(template)
-	let out_dir = gutentags#get_project_root(getcwd()).'/Resources/Schemas'
+	let out_dir = (exists('*gutentags#get_project_root') ?
+		\ gutentags#get_project_root(getcwd()) : getcwd()) . '/Resources/Schemas'
 	if !isdirectory(out_dir)
 		call mkdir(out_dir, 'p')
 	endif
@@ -190,6 +202,7 @@ function! rthelper#GenSchema() abort
 	let out_file = out_dir.'/customTags.json'
 	call writefile([out], out_file, 'S')
 	echom '[rthelper] '.reltimestr(reltime(tI)).'s workspace/customTags written'
+	return 0
 endfunction
 
 function! s:HandleUnresolved()
@@ -1317,7 +1330,6 @@ function! s:ParseDataFieldName(partial, df)
 endfunction
 
 function! s:parseCS(recache) abort
-	let s:tf = b:gutentags_files.ctags
 	let tI = reltime()
 	echom '[rthelper] Parsing usings'
 	call s:get_Usings(a:recache)
