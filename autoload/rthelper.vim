@@ -83,13 +83,10 @@ endfunction
 "  $ vim -es +'RTGenSchema /tmp/rt.tags' +qall
 " Params:
 "  [in] tf: tag filename to use, if not using gutentags
-function! rthelper#GenSchema(tf) abort
-	if !empty(a:tf)
-		let s:tf = a:tf
+function! rthelper#GenSchema(...) abort
+	if a:0 > 0 && !empty(a:1)
+		let s:tf = a:1
 	endif
-	return rthelper#GenSchema()
-endfunction
-function! rthelper#GenSchema() abort
 	if !isdirectory('RobustToolbox')
 		" Vim not launched within RobustToolbox content
 		return 1
@@ -671,7 +668,7 @@ function! s:BuildComponentDefinition(unRegistered, dd)
 	else
 		let client_server_scope = matchlist(a:dd[0].s, '\V\[^.]\*.\(\.\{-}\).\.\*\$')
 		if !empty(client_server_scope)
-			echom 'worked: '.client_server_scope[1]
+			"echom 'worked: '.client_server_scope[1]
 			if client_server_scope[1] ==# 'Server'
 				let isServer = v:true
 			elseif client_server_scope[1] ==# 'Client'

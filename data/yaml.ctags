@@ -3,7 +3,7 @@
 #--extras=+p-q
 #--pseudo-tags=+{TAG_EXTRA_DESCRIPTION}{TAG_KIND_DESCRIPTION}{TAG_FIELD_DESCRIPTION}{TAG_PROC_CWD}
 --langdef=yml{_autoFQTag}
-#Gives error in ctags without yaml feature
+#Gives error in ctags without yaml feature, so... disable???
 --map-yaml=-.yml
 --map-yaml=-.yaml
 --map-yml=+.yml
@@ -89,7 +89,11 @@
 	} ifelse
 }}
 # object.object
---_mtable-regex-yml=object/- //p{tenter=object}{{
+### I think I tried to nest objects here, but parsing was incomplete
+### stack overflow in simplemob.yml, so, no more nesting then as not
+### necessary
+#--_mtable-regex-yml=object/- //p{tenter=object}{{
+--_mtable-regex-yml=object/- //p{{
 	count 0 gt {
 		dup type [] type eq {
 			dup dup 1 get
@@ -122,7 +126,7 @@
 }}
 # or might be faster? But no end of object detection
 #--_mtable-regex-yml=object/.//p
---_mtable-regex-yml=object/\n//p{treset=main}{{
+--_mtable-regex-yml=object/\n//p{tleave}{{
 	count 0 gt {
 		dup type [] type eq {
 			pop
